@@ -40,7 +40,7 @@ const App = ({ token, user }) => {
 
   // Initialize socket connection
   useEffect(() => {
-    socketRef.current = io('http://localhost:3001');
+    socketRef.current = io('https://musicapp-7dy9.onrender.com');
     
     socketRef.current.on('room-joined', (data) => {
       setRoom(data.room);
@@ -95,7 +95,7 @@ const App = ({ token, user }) => {
   const fetchSongs = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:3001/api/songs', {
+      const res = await fetch('https://musicapp-7dy9.onrender.com/api/songs', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const songs = await res.json();
@@ -109,7 +109,7 @@ const App = ({ token, user }) => {
         artist: song.artist,
         album: song.album,
         duration: song.duration,
-        url: `http://localhost:3001/api/songs/${song._id}/stream`
+        url: `https://musicapp-7dy9.onrender.com/api/songs/${song._id}/stream`
       })));
     } catch (err) {
       console.error("Failed to fetch songs", err);
@@ -121,7 +121,7 @@ const App = ({ token, user }) => {
   const fetchFavorites = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:3001/api/favorites', {
+      const res = await fetch('https://musicapp-7dy9.onrender.com/api/favorites', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const favs = await res.json();
@@ -135,7 +135,7 @@ const App = ({ token, user }) => {
         artist: fav.song.artist,
         album: fav.song.album,
         duration: fav.song.duration,
-        url: `http://localhost:3001/api/songs/${fav.song._id}/stream`
+        url: `https://musicapp-7dy9.onrender.com/api/songs/${fav.song._id}/stream`
       })));
     } catch (err) {
       setFavoritesList([]);
@@ -170,7 +170,7 @@ const App = ({ token, user }) => {
         formData.append('album', 'Unknown Album');   // provide default
         formData.append('duration', 0);              // provide default
         try {
-          await fetch('http://localhost:3001/api/songs/upload', {
+          await fetch('https://musicapp-7dy9.onrender.com/api/songs/upload', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: formData
@@ -210,7 +210,7 @@ const App = ({ token, user }) => {
     formData.append('album', uploadFields.album);
     formData.append('duration', uploadFields.duration || 0);
     try {
-      await fetch('http://localhost:3001/api/songs/upload', {
+      await fetch('https://musicapp-7dy9.onrender.com/api/songs/upload', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -228,7 +228,7 @@ const App = ({ token, user }) => {
   const toggleFavorite = async (song) => {
     if (!token) return;
     try {
-      await fetch('http://localhost:3001/api/favorites', {
+      await fetch('https://musicapp-7dy9.onrender.com/api/favorites', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -536,7 +536,7 @@ const App = ({ token, user }) => {
           </button>
           <input
             ref={deviceFileInputRef}
-            type="file"
+            type
             multiple
             accept="audio/*"
             style={{ display: 'none' }}
