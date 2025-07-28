@@ -28,7 +28,7 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB Connection
-mongoose.connect('mongodb://localhost:27017/musicsync', {
+mongoose.connect('mongodb+srv://aravindswamymajjuri143:xCuKYeBVOQyv0QdL@projects.m06dc.mongodb.net/?retryWrites=true&w=majority&appName=Projects', {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
