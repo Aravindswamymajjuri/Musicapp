@@ -14,10 +14,13 @@ const fs = require('fs');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: {
-    origin: "*"
-  }
+  cors: {
+    origin: ["http://localhost:5173", "https://musicapp-7dy9.onrender.com"],
+    methods: ["GET", "POST"],
+    credentials: true,
+  }
 });
+
 
 // Middleware
 app.use(cors());
@@ -263,6 +266,7 @@ app.get('/api/songs', authenticateToken, async (req, res) => {
       .sort({ uploadedAt: -1 });
     res.json(songs);
   } catch (error) {
+    console.error('GET /api/songs error:', error); // log error stack
     res.status(500).json({ error: error.message });
   }
 });
@@ -377,6 +381,7 @@ app.get('/api/favorites', authenticateToken, async (req, res) => {
       .sort({ addedAt: -1 });
     res.json(favorites);
   } catch (error) {
+    console.error('GET /api/favorites error:', error); // log error stack
     res.status(500).json({ error: error.message });
   }
 });

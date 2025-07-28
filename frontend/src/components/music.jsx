@@ -4,6 +4,9 @@ import { io } from 'socket.io-client';
 import { Play, Pause, SkipForward, SkipBack, Shuffle, Repeat, Volume2, Users, Settings, Upload, Music, Heart, Clock, Moon, Sun } from 'lucide-react';
 import '../components/music.css'; // Assuming you have a CSS file for styling
 
+const BACKEND_URL = 'https://musicapp-7dy9.onrender.com';
+// const BACKEND_URL = 'http://localhost:3001'
+
 const App = ({ token, user }) => {
   const [currentSong, setCurrentSong] = useState(null);
   const [playlist, setPlaylist] = useState([]);
@@ -41,6 +44,7 @@ const App = ({ token, user }) => {
   // Initialize socket connection
   useEffect(() => {
     socketRef.current = io('https://musicapp-7dy9.onrender.com');
+    // socketRef.current = io('http://localhost:3001')
     
     socketRef.current.on('room-joined', (data) => {
       setRoom(data.room);
@@ -95,7 +99,7 @@ const App = ({ token, user }) => {
   const fetchSongs = async () => {
     if (!token) return;
     try {
-      const res = await fetch('https://musicapp-7dy9.onrender.com/api/songs', {
+      const res = await fetch(`${BACKEND_URL}/api/songs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const songs = await res.json();
@@ -109,7 +113,7 @@ const App = ({ token, user }) => {
         artist: song.artist,
         album: song.album,
         duration: song.duration,
-        url: `https://musicapp-7dy9.onrender.com/api/songs/${song._id}/stream`
+        url: `${BACKEND_URL}/api/songs/${song._id}/stream`
       })));
     } catch (err) {
       console.error("Failed to fetch songs", err);
@@ -121,7 +125,7 @@ const App = ({ token, user }) => {
   const fetchFavorites = async () => {
     if (!token) return;
     try {
-      const res = await fetch('https://musicapp-7dy9.onrender.com/api/favorites', {
+      const res = await fetch(`${BACKEND_URL}/api/favorites`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const favs = await res.json();
@@ -135,7 +139,7 @@ const App = ({ token, user }) => {
         artist: fav.song.artist,
         album: fav.song.album,
         duration: fav.song.duration,
-        url: `https://musicapp-7dy9.onrender.com/api/songs/${fav.song._id}/stream`
+        url: `${BACKEND_URL}/api/songs/${fav.song._id}/stream`
       })));
     } catch (err) {
       setFavoritesList([]);
@@ -166,11 +170,11 @@ const App = ({ token, user }) => {
         const formData = new FormData();
         formData.append('song', file);
         formData.append('title', file.name.replace(/\.[^/.]+$/, ""));
-        formData.append('artist', 'Unknown Artist'); // provide default
-        formData.append('album', 'Unknown Album');   // provide default
-        formData.append('duration', 0);              // provide default
+        formData.append('artist', 'Unknown Artist');
+        formData.append('album', 'Unknown Album');
+        formData.append('duration', 0);
         try {
-          await fetch('https://musicapp-7dy9.onrender.com/api/songs/upload', {
+          await fetch(`${BACKEND_URL}/api/songs/upload`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: formData
@@ -210,7 +214,7 @@ const App = ({ token, user }) => {
     formData.append('album', uploadFields.album);
     formData.append('duration', uploadFields.duration || 0);
     try {
-      await fetch('https://musicapp-7dy9.onrender.com/api/songs/upload', {
+      await fetch(`${BACKEND_URL}/api/songs/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -228,7 +232,7 @@ const App = ({ token, user }) => {
   const toggleFavorite = async (song) => {
     if (!token) return;
     try {
-      await fetch('https://musicapp-7dy9.onrender.com/api/favorites', {
+      await fetch(`${BACKEND_URL}/api/favorites`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -536,7 +540,7 @@ const App = ({ token, user }) => {
           </button>
           <input
             ref={deviceFileInputRef}
-            type
+            type="file"
             multiple
             accept="audio/*"
             style={{ display: 'none' }}
