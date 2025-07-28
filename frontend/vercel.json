@@ -3,6 +3,10 @@
     {
       "source": "/api/(.*)",
       "destination": "https://musicapp-7dy9.onrender.com/api/$1"
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": "https://musicapp-7dy9.onrender.com/socket.io/$1"
     }
   ]
 }
