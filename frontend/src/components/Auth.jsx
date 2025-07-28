@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const BACKEND_URL = 'https://musicapp-7dy9.onrender.com';
+
 const Auth = ({ onAuth }) => {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [username, setUsername] = useState('');
@@ -12,8 +14,8 @@ const Auth = ({ onAuth }) => {
     setError('');
     try {
       const url = mode === 'login'
-        ? 'http://localhost:3001/api/auth/login'
-        : 'http://localhost:3001/api/auth/register';
+        ? `${BACKEND_URL}/api/auth/login`
+        : `${BACKEND_URL}/api/auth/register`;
       const body = mode === 'login'
         ? { email, password }
         : { username, email, password };
