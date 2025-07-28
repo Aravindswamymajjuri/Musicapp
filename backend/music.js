@@ -15,8 +15,8 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:5173", "https://musicapp-7dy9.onrender.com"],
-    methods: ["GET", "POST"],
+    origin: "*",
+    methods: "*",
     credentials: true,
   }
 });
