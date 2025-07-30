@@ -150,7 +150,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Get details of a single song by ID (without file data)
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -177,7 +177,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // Stream song file
-router.get('/:id/stream', authenticateToken, async (req, res) => {
+router.get('/:id/stream', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -269,7 +269,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 });
 
 // Increment play count
-router.post('/:id/play', authenticateToken, async (req, res) => {
+router.post('/:id/play', async (req, res) => {
   try {
     const { id } = req.params;
     
