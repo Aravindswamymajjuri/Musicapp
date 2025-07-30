@@ -5,8 +5,8 @@ const Header = ({ token, user, onLogout }) => {
   const navigate = useNavigate();
 
   const handleLogoutClick = () => {
-    onLogout();
     navigate('/login');
+    localStorage.removeItem("token")
   };
 
   return (
@@ -18,7 +18,7 @@ const Header = ({ token, user, onLogout }) => {
       </nav>
 
       <div>
-        {token && user ? (
+        {localStorage.getItem("token") && user ? (
           <>
             <span style={styles.userInfo}>Hello, {user.username || user.email}</span>
             <button onClick={handleLogoutClick} style={styles.button}>Logout</button>
@@ -26,6 +26,7 @@ const Header = ({ token, user, onLogout }) => {
         ) : (
           <>
             <Link to="/login" style={styles.link}>Login</Link>
+             <Link to="/login" onClick={handleLogoutClick} style={styles.link}>Logout</Link>
             <Link to="/signup" style={styles.link}>Signup</Link>
           </>
         )}
