@@ -7,6 +7,10 @@
     {
       "source": "/socket.io/(.*)",
       "destination": "https://musicapp-7dy9.onrender.com/socket.io/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
