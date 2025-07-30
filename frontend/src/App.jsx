@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react'
-import Music from './components/music'
-import Auth from './components/Auth'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Music from './components/music';
+import Auth from './components/Auth';
+import './App.css';
+import Login from './music/login';
+import Signup from './music/signup';
+import SongManager from './music/songmanager';
+import FavoriteSongs from './music/favioute';
+import Roommanagement from './music/roommanagement';
+import Header from './music/navbar';
 
 function App() {
   const [token, setToken] = useState('');
@@ -32,34 +39,33 @@ function App() {
   };
 
   return (
-    <>
-      {!token
-        ? <Auth onAuth={handleAuth} />
-        : (
-          <>
-            <button
-              style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                zIndex: 1000,
-                padding: '0.5rem 1rem',
-                background: '#ef4444',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer'
-              }}
-              onClick={handleLogout}
-            >
-              Logout
-            </button>
-            <Music token={token} user={user} />
-          </>
-        )
-      }
-    </>
-  )
+    <Router>
+      <Header/>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/login" element={<Login  />} />
+        <Route path="/signup" element={<Signup  />} />
+        <Route
+          path="/songmanager"
+          element={
+              <SongManager  />
+          }
+        />
+        <Route
+          path="/favorite"
+          element={
+              <FavoriteSongs />
+          }
+        />
+        <Route
+          path="/room"
+          element={
+              <Roommanagement />
+          }
+        />
+      </Routes>
+    </Router>
+  );
 }
 
-export default App
+export default App;
