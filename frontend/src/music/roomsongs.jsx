@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const API_ROOMS = 'http://localhost:3001/api/rooms';
-const API_SONGS = 'http://localhost:3001/api/songs';
+const API_ROOMS = 'https://musicapp-7dy9.onrender.com/api/rooms';
+const API_SONGS = 'https://musicapp-7dy9.onrender.com/api/songs';
 
 const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const token = localStorage.getItem('token');

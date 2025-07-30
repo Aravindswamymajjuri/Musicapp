@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import FavoriteSongs from './favioute'; // Adjust path if needed
 
-const API_BASE = 'http://localhost:3001/api/songs';
-const FAV_BASE = 'http://localhost:3001/api/favorites';
+const API_BASE = 'https://musicapp-7dy9.onrender.com/api/songs';
+const FAV_BASE = 'https://musicapp-7dy9.onrender.com/api/favorites';
 
 const SongManager = () => {
   // Upload form states

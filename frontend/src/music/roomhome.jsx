@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_ROOMS = 'http://localhost:3001/api/rooms';
+const API_ROOMS = 'https://musicapp-7dy9.onrender.com/api/rooms';
 
 const Home = ({ onJoinRoom }) => {
   const [isCreating, setIsCreating] = useState(false);

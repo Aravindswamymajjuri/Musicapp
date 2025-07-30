@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-const FAV_BASE = 'http://localhost:3001/api/favorites';
+const FAV_BASE = 'https://musicapp-7dy9.onrender.com/api/favorites';
 
 const FavoriteSongs = ({ token, onPlaySong, selectedSongId, toggleFavorite }) => {
   const [favoriteSongs, setFavoriteSongs] = useState([]);
