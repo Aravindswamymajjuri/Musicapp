@@ -150,7 +150,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Get details of a single song by ID (without file data)
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -178,100 +178,63 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
 // Stream song file
 router.get('/:id/stream', async (req, res) => {
-  const songId = req.params?.id;
-  if (!songId) {
-    return res.status(400).json({ error: 'Missing song id in request params' });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(songId)) {
-    return res.status(400).json({ error: 'Invalid Song ID' });
-  }
-
   try {
-    // Select the embedded fileData (if present) and minimal metadata
-    const song = await Song.findById(songId).select('fileData filePath metadata originalName fileSize uploadedBy');
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid Song ID' });
+    }
+
+    const song = await Song.findById(id).select('fileData originalName uploadedBy');
     if (!song) {
       return res.status(404).json({ error: 'Song not found' });
     }
 
-    // If file data is embedded as base64, stream from buffer (support Range)
-    if (song.fileData?.data) {
-      const contentType = song.fileData.contentType || song.metadata?.format || 'audio/mpeg';
-      const fileBuffer = Buffer.from(song.fileData.data, 'base64');
-      const total = fileBuffer.length;
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-
-        if (isNaN(start) || isNaN(end) || start > end || start >= total) {
-          res.set('Content-Range', `bytes */${total}`);
-          return res.status(416).end();
-        }
-
-        const chunk = fileBuffer.slice(start, end + 1);
-        res.status(206).set({
-          'Content-Range': `bytes ${start}-${end}/${total}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunk.length,
-          'Content-Type': contentType
-        });
-        return res.end(chunk);
-      } else {
-        res.status(200).set({
-          'Content-Length': total,
-          'Content-Type': contentType,
-          'Accept-Ranges': 'bytes'
-        });
-        return res.end(fileBuffer);
-      }
+    // Check ownership
+    if (song.uploadedBy.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Fallback: if you store files on disk/path, stream from filesystem
-    const filePath = song.filePath || (song.file && song.file.path) || song.path || song.url;
-    if (filePath) {
-      const fs = require('fs');
-      if (!fs.existsSync(filePath)) {
-        console.error('Stream error: filePath exists in record but not on disk', filePath);
-        return res.status(404).json({ error: 'Audio file not found on server' });
-      }
-      const stat = fs.statSync(filePath);
-      const total = stat.size;
-      const range = req.headers.range;
-      const contentType = song.fileData?.contentType || 'audio/mpeg';
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-        if (start >= total || end >= total) {
-          return res.status(416).set('Content-Range', `bytes */${total}`).end();
-        }
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${total}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': (end - start) + 1,
-          'Content-Type': contentType
-        });
-        fs.createReadStream(filePath, { start, end }).pipe(res);
-      } else {
-        res.writeHead(200, {
-          'Content-Length': total,
-          'Content-Type': contentType
-        });
-        fs.createReadStream(filePath).pipe(res);
-      }
-      return;
+    if (!song.fileData || !song.fileData.data) {
+      return res.status(404).json({ error: 'Audio file data not found' });
     }
 
-    console.error('Stream error: no fileData or filePath available for song', songId);
-    return res.status(404).json({ error: 'Audio file not available for this song' });
+    // Convert base64 back to buffer
+    const fileBuffer = Buffer.from(song.fileData.data, 'base64');
+    
+    // Set headers
+    res.set({
+      'Content-Type': song.fileData.contentType || 'audio/mpeg',
+      'Content-Length': fileBuffer.length,
+      'Content-Disposition': `inline; filename="${song.originalName}"`,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000' // Cache for 1 year
+    });
 
-  } catch (err) {
-    console.error('Stream error:', err);
-    return res.status(500).json({ error: 'Internal Server Error while streaming audio' });
+    // Handle range requests for audio seeking
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileBuffer.length - 1;
+      const chunksize = (end - start) + 1;
+      
+      res.status(206);
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${fileBuffer.length}`,
+        'Content-Length': chunksize
+      });
+      
+      res.end(fileBuffer.slice(start, end + 1));
+    } else {
+      res.end(fileBuffer);
+    }
+
+  } catch (error) {
+    console.error('Stream error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 

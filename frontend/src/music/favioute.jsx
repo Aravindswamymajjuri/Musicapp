@@ -7,7 +7,6 @@ const FavoriteSongs = ({ token, onPlaySong, selectedSongId, toggleFavorite }) =>
   const [favoriteSongs, setFavoriteSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  console.log('FavoriteSongs component token:', token);
 
   // Fetch favorite songs on mount and when token changes or favorites are toggled
   useEffect(() => {
