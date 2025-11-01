@@ -44,6 +44,8 @@ const Roommanagement = () => {
 	};
 
 	const handleLeaveRoom = () => {
+		// ensure the stored joined room key is removed when leaving
+		localStorage.removeItem(ROOM_STORAGE_KEY);
 		setJoinedRoomCode(null);
 	};
 

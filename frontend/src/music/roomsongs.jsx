@@ -9,6 +9,8 @@ const API_ROOMS = `${API_BASE}/api/rooms`;
 const API_SONGS = `${API_BASE}/api/songs`;
 const SOCKET_URL = API_BASE;
 
+const ROOM_STORAGE_KEY = 'joinedRoomCode'; // NEW: storage key constant
+
 const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const token = localStorage.getItem('token');
 
@@ -62,6 +64,15 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         const newQ = playback.queue.map(q => (typeof q === 'string' ? (allSongs.find(s => s._id === q) || { _id: q }) : q));
         setQueue(newQ);
       }
+    });
+
+    // If server forcibly removes this socket, clear storage and leave room UI
+    socketRef.current.on('removed', (info) => {
+      try {
+        // remove stored joined room code so user doesn't auto-rejoin
+        localStorage.removeItem(ROOM_STORAGE_KEY);
+      } catch (e) { /* ignore */ }
+      try { if (onLeaveRoom) onLeaveRoom(); } catch (e) {}
     });
 
     return () => {
@@ -299,6 +310,13 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     setCurrentTime(audioRef.current.currentTime);
   };
 
+  // Leave wrapper used by the Leave Room button
+  const handleLocalLeave = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try { localStorage.removeItem(ROOM_STORAGE_KEY); } catch (err) { /* ignore */ }
+    if (onLeaveRoom) onLeaveRoom();
+  };
+
   if (loadingRoom) return <p>Loading room...</p>;
   if (error) return <p style={{ color: 'red' }}>{error}</p>;
   if (!room) return <p>Room not found</p>;
@@ -309,7 +327,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       <p><strong>Code:</strong> {room.code}</p>
       <p><strong>Host:</strong> {room.host?.username || '(unknown)'}</p>
 
-      <button type="button" onClick={(e) => { e.preventDefault(); onLeaveRoom(); }} style={{ marginBottom: 20 }}>
+      <button type="button" onClick={handleLocalLeave} style={{ marginBottom: 20 }}>
         Leave Room
       </button>
 
