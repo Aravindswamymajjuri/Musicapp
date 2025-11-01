@@ -201,6 +201,11 @@ router.get('/:id/stream', async (req, res) => {
       const total = fileBuffer.length;
       const range = req.headers.range;
 
+      // Ensure CORS headers are present on streaming responses
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+      res.setHeader('Accept-Ranges', 'bytes');
+
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');
         const start = parseInt(parts[0], 10);
@@ -232,6 +237,10 @@ router.get('/:id/stream', async (req, res) => {
     // Fallback: if you store files on disk/path, stream from filesystem
     const filePath = song.filePath || (song.file && song.file.path) || song.path || song.url;
     if (filePath) {
+      // Ensure CORS headers for filesystem streaming as well
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+      res.setHeader('Accept-Ranges', 'bytes');
       const fs = require('fs');
       if (!fs.existsSync(filePath)) {
         console.error('Stream error: filePath exists in record but not on disk', filePath);

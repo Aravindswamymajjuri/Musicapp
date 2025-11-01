@@ -122,13 +122,74 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
           throw new Error(data.error || 'Room not found');
         }
         const data = await res.json();
-        setRoom(data);
-        setUsers(data.users || []);
-        setCurrentSong(data.currentSong || null);
-        setCurrentTime(data.currentTime || 0);
-        setIsPlaying(!!data.isPlaying);
-        setQueue((data.queue || []).map(idOrObj => (typeof idOrObj === 'string' ? { _id: idOrObj } : idOrObj)));
-        setIsHost(data.host?._id === userId);
+
+        // Instead of bluntly overwriting playback state on every poll,
+        // apply server state conservatively so we don't interrupt playback.
+        // ...new: applyServerPlayback helper...
+        const applyServerPlayback = (server) => {
+          // update static room/users info (safe)
+          setRoom(server);
+          setUsers(server.users || []);
+          // update host flag
+          setIsHost(!!(server.host && server.host._id === userId));
+
+          // Hosts keep local control — guests should follow host
+          if (server.host && server.host._id === userId) {
+            // still update queue for host UI, but do not override host playback state
+            if (Array.isArray(server.queue)) {
+              const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
+              const localQueueIds = queue.map(q => q._id || q);
+              if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
+                const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
+                setQueue(mapped);
+              }
+            }
+            return;
+          }
+
+          // Guests: update current song only if different (by id)
+          const serverSongId = server.currentSong?._id || server.currentSongId || null;
+          const localSongId = currentSong?._id || null;
+          if (serverSongId !== localSongId) {
+            if (serverSongId) {
+              // try to find full object in allSongs
+              const found = allSongs.find(s => s._id === serverSongId);
+              setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
+            } else {
+              setCurrentSong(null);
+            }
+          }
+
+          // Sync time only when there's a meaningful drift (>1s)
+          const serverTime = typeof server.currentTime === 'number' ? server.currentTime : 0;
+          if (audioRef.current) {
+            const audioTime = audioRef.current.currentTime || 0;
+            if (Math.abs(audioTime - serverTime) > 1) {
+              try { audioRef.current.currentTime = serverTime; } catch (e) {}
+              setCurrentTime(serverTime);
+            }
+          } else {
+            setCurrentTime(serverTime);
+          }
+
+          // Apply play/pause only when it actually changed
+          if (typeof server.isPlaying === 'boolean' && server.isPlaying !== isPlaying) {
+            setIsPlaying(server.isPlaying);
+          }
+
+          // Update queue only when differs
+          if (Array.isArray(server.queue)) {
+            const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
+            const localQueueIds = queue.map(q => q._id || q);
+            if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
+              const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
+              setQueue(mapped);
+            }
+          }
+        };
+
+        applyServerPlayback(data);
+
       } catch (err) {
         setError(err.message || 'Failed to load room');
       } finally {
@@ -146,7 +207,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [roomCode, token, userId, isHost]);
+  }, [roomCode, token, userId, isHost, queue, currentSong, isPlaying, allSongs]);
 
   // Fetch all songs from DB for UI
   useEffect(() => {
@@ -219,14 +280,17 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
     const streamUrl = `${API_SONGS}/${currentSong._id}/stream`;
 
+    // set crossOrigin and preload so metadata and range requests work reliably
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'metadata';
+
     // compare by id to avoid absolute/relative URL differences
     const srcIncludesId = audio.src && String(audio.src).includes(currentSong._id);
     if (!srcIncludesId) {
       audio.src = streamUrl;
-      audio.load();
-      // set time after canplay
+      // Wait for canplay/loadedmetadata before adjusting time & play
       const onCanPlay = () => {
-        if (!Number.isNaN(currentTime) && currentTime > 0 && currentTime < (audio.duration || Infinity)) {
+        if (!Number.isNaN(currentTime) && typeof audio.duration === 'number' && currentTime > 0 && currentTime < audio.duration) {
           try { audio.currentTime = currentTime; } catch (e) {}
         }
         if (isPlaying) audio.play().catch(() => {});
@@ -234,15 +298,30 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         audio.removeEventListener('canplay', onCanPlay);
       };
       audio.addEventListener('canplay', onCanPlay);
+      // trigger load
+      try { audio.load(); } catch (e) {}
       return;
     }
 
-    // same source: adjust time within tolerance and play/pause
-    if (!Number.isNaN(currentTime) && Math.abs(audio.currentTime - currentTime) > 1) {
-      try { audio.currentTime = currentTime; } catch (e) {}
+    // same source: adjust time within tolerance and play/pause (but only after metadata is available)
+    const trySyncTime = () => {
+      if (!Number.isNaN(currentTime) && Math.abs(audio.currentTime - currentTime) > 1) {
+        try { audio.currentTime = currentTime; } catch (e) {}
+      }
+      if (isPlaying) audio.play().catch(() => {});
+      else audio.pause();
+    };
+
+    if (isNaN(audio.duration) || audio.duration === 0) {
+      // wait for metadata then sync
+      const onLoadedMeta = () => {
+        trySyncTime();
+        audio.removeEventListener('loadedmetadata', onLoadedMeta);
+      };
+      audio.addEventListener('loadedmetadata', onLoadedMeta);
+    } else {
+      trySyncTime();
     }
-    if (isPlaying) audio.play().catch(() => {});
-    else audio.pause();
   }, [currentSong, currentTime, isPlaying, isHost]);
 
   // NEW: ensure host's local audio player receives src/time/play when host changes currentSong or toggles playback
@@ -367,27 +446,24 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   // Placeholder for removing users (needs backend support)
   const removeUser = async (userIdToRemove) => {
     if (!isHost) return alert('Only host can remove users');
-    if (userIdToRemove === userId) return alert('Host cannot remove themselves');
-
+    if (userIdToRemove === userId) return alert('You cannot remove yourself');
+    if (!window.confirm('Remove this user from the room?')) return;
     try {
-      // Use socket to request server to kick the user (server will send 'forceLeave' to that client)
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('kickUser', { userId: userIdToRemove, roomCode });
-        // Inform host that request was sent — actual disconnect is handled by server -> client
-        alert('Remove request sent to server.');
-      } else {
-        // No socket connection; optionally call a REST endpoint if you implement it on the backend
-        alert('Unable to remove user: no socket connection.');
-      }
+      const res = await fetch(`${API_ROOMS}/${roomCode}/users`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ userId: userIdToRemove }),
+      });
+      if (!res.ok) throw new Error('Failed to remove user');
+      // optimistic update: remove from users list
+      setUsers(prev => prev.filter(u => u._id !== userIdToRemove));
+      alert('User removed from the room');
     } catch (e) {
-      alert('Failed to remove user: ' + (e.message || e));
+      alert(e.message || 'Error removing user');
     }
-  };
-
-  // Update playback current time
-  const onTimeUpdate = () => {
-    if (!audioRef.current) return;
-    setCurrentTime(audioRef.current.currentTime);
   };
 
   // MAIN render
@@ -397,90 +473,21 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
   return (
     <div className="room">
-      <div className="room-header">
-        <h2>Room: {room.code}</h2>
-        <button onClick={onLeaveRoom}>Leave Room</button>
-      </div>
-
-      <div className="room-content">
-        <div className="users-list">
-          <h3>Users</h3>
-          <ul>
-            {users.map(u => (
-              <li key={u._id}>
-                {u.name} {u._id === room.host?._id ? '(Host)' : ''}
-                {isHost && u._id !== userId && (
-                  <button onClick={() => removeUser(u._id)}>Remove</button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="playback-controls">
-          <h3>Now Playing</h3>
-          {currentSong ? (
-            <div>
-              <div>{currentSong.title} - {currentSong.artist}</div>
-              <div>
-                <button onClick={togglePlayPause}>
-                  {isPlaying ? 'Pause' : 'Play'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>No song is currently playing.</div>
-          )}
-        </div>
-
-        <div className="queue">
-          <h3>Queue</h3>
-          <ul>
-            {queue.map((s, idx) => (
-              <li key={s._id}>
-                {s.title} - {s.artist}
-                {isHost && (
-                  <button onClick={() => {
-                    setQueue(prev => prev.filter(q => q._id !== s._id));
-                    emitHostPlayback({
-                      currentSongId: currentSong?._id || null,
-                      currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
-                      currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-                      isPlaying,
-                      queue: queue.filter(q => q._id !== s._id).map(s => s._id || s)
-                    });
-                  }}>Remove</button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="all-songs">
-          <h3>All Songs</h3>
-          {allSongsLoading && <div>Loading songs...</div>}
-          {allSongsError && <div className="error">{allSongsError}</div>}
-          <ul>
-            {allSongs.map(song => (
-              <li key={song._id}>
-                {song.title} - {song.artist}
-                {isHost && (
-                  <button onClick={() => addSongToQueue(song)}>Add to Queue</button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      {/* ...existing UI ... */}
 
       <audio
         ref={audioRef}
+        preload="metadata"
+        crossOrigin="anonymous"
         onTimeUpdate={onTimeUpdate}
         onEnded={handleEnded}
-        style={{ display: 'none' }}
+        // show controls only to host, but don't use display:none so metadata loads
+        controls={isHost}
+        style={{ width: isHost ? '100%' : 0, height: isHost ? 'auto' : 1, opacity: isHost ? 1 : 0.001 }}
       />
     </div>
   );
-};
+
+}
 
 export default Room;
