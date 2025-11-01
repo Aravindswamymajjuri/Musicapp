@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 
-const API_ROOMS = 'https://musicapp-7dy9.onrender.com/api/rooms';
-// const API_ROOMS = 'http://localhost:3001/api/rooms';
+// Safe env lookup for backend URL
+const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
+const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
+const API_BASE_URL = envFromProcess || envFromImportMeta || 'http://localhost:3001';
+const API_ROOMS = `${API_BASE_URL}/api/rooms`;
 
 const Home = ({ onJoinRoom }) => {
   const [isCreating, setIsCreating] = useState(false);

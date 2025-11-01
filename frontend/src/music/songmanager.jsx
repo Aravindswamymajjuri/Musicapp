@@ -1,10 +1,18 @@
-import React, { useState, useEffect } from 'react';
+// import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import FavoriteSongs from './favioute'; // Adjust path if needed
 
-const API_BASE = 'https://musicapp-7dy9.onrender.com/api/songs';
-const FAV_BASE = 'https://musicapp-7dy9.onrender.com/api/favorites';
+// Safe env lookup for backend URL (REACT_APP_BACKEND_URL from frontend/.env)
+const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
+const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
+const API_BASE_URL = envFromProcess || envFromImportMeta || 'http://localhost:3001';
+const API_SONGS = `${API_BASE_URL}/api/songs`;
+const FAV_BASE = `${API_BASE_URL}/api/favorites`;
 
 const SongManager = () => {
+  // NEW: ref for the audio element so we can control load/play immediately
+  const audioRef = useRef(null);
+
   // Upload form states
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
@@ -45,7 +53,7 @@ const SongManager = () => {
   // Server health check
   const checkServerStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/health`);
+      const res = await fetch(`${API_SONGS}/health`);
       if (res.ok) {
         const data = await res.json();
         setServerStatus(data.dbConnection === 'connected' ? 'ready' : 'not-ready');
@@ -62,7 +70,7 @@ const SongManager = () => {
     setListLoading(true);
     setListError('');
     try {
-      const res = await fetch(API_BASE, {
+      const res = await fetch(API_SONGS, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Failed to fetch songs: ${res.status}`);
@@ -164,7 +172,7 @@ const SongManager = () => {
 
     setUploadLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/upload`, {
+      const response = await fetch(`${API_SONGS}/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
@@ -193,7 +201,7 @@ const SongManager = () => {
     setDeletingId(id);
     setListError('');
     try {
-      const res = await fetch(`${API_BASE}/${id}`, {
+      const res = await fetch(`${API_SONGS}/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -205,10 +213,10 @@ const SongManager = () => {
       // If deleted song is playing, stop audio
       if (selectedSongId === id) {
         setSelectedSongId(null);
-        if (audioSrc) {
+        if (audioSrc && String(audioSrc).startsWith('blob:')) {
           URL.revokeObjectURL(audioSrc);
-          setAudioSrc(null);
         }
+        setAudioSrc(null);
       }
       // Refresh favorites (in case deleted song was favorited)
       await fetchFavorites();
@@ -224,40 +232,59 @@ const SongManager = () => {
     if (selectedSongId === id) {
       // Stop playback if clicking current song
       setSelectedSongId(null);
-      if (audioSrc) {
+      // only revoke if we previously created a blob URL
+      if (audioSrc && String(audioSrc).startsWith('blob:')) {
         URL.revokeObjectURL(audioSrc);
-        setAudioSrc(null);
       }
+      setAudioSrc(null);
       return;
     }
 
+    // Select the song and set the audio src to the streaming endpoint.
+    // Browser will stream and use Range requests; faster than waiting for full blob.
     setSelectedSongId(id);
-
-    if (audioSrc) {
+    if (audioSrc && String(audioSrc).startsWith('blob:')) {
       URL.revokeObjectURL(audioSrc);
-      setAudioSrc(null);
     }
-
-    try {
-      const res = await fetch(`${API_BASE}/${id}/stream`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Failed to load the song');
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setAudioSrc(url);
-    } catch (error) {
-      alert(error.message);
-      setSelectedSongId(null);
-      setAudioSrc(null);
-    }
+    // Use the direct stream endpoint - server supports Range and streaming.
+    // Also call load/play on the audio element via effect below for faster startup.
+    setAudioSrc(`${API_SONGS}/${id}/stream`);
   };
+
+  // When audioSrc changes, apply it immediately to the audio element and attempt to play.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!audioSrc) {
+      // stop and clear source
+      try { audio.pause(); } catch (e) {}
+      audio.removeAttribute('src');
+      try { audio.load(); } catch (e) {}
+      return;
+    }
+
+    // Set src, load and play. This starts streaming quickly and allows Range requests.
+    try {
+      if (audio.src !== audioSrc) {
+        audio.src = audioSrc;
+      }
+      // preload metadata/auto to allow quick start
+      audio.preload = 'auto';
+      // ensure crossOrigin so CORS headers are respected for streaming responses
+      audio.crossOrigin = 'anonymous';
+      audio.load();
+      // try to play (may be blocked by autoplay policies; caller interactions will allow)
+      audio.play().catch(() => { /* ignore play errors; user interaction may be needed */ });
+    } catch (e) {
+      console.error('Audio element error applying src:', e);
+    }
+  }, [audioSrc]);
 
   // Cleanup blob URLs on unmount or when changing audioSrc
   useEffect(() => {
     return () => {
-      if (audioSrc) {
+      if (audioSrc && String(audioSrc).startsWith('blob:')) {
         URL.revokeObjectURL(audioSrc);
       }
     };
@@ -390,13 +417,16 @@ const SongManager = () => {
       </form>
 
       {/* Audio player for selected song */}
-      {audioSrc && (
-        <div style={{ marginTop: 20 }}>
-          <audio controls src={audioSrc} autoPlay>
-            Your browser does not support the audio element.
-          </audio>
-        </div>
-      )}
+      <div style={{ marginTop: 20 }}>
+        <audio
+          ref={audioRef}
+          controls
+          preload="auto"
+          crossOrigin="anonymous"
+        >
+          Your browser does not support the audio element.
+        </audio>
+      </div>
 
       {/* Songs List */}
       <h2 style={{ marginTop: 50 }}>Your Uploaded Songs</h2>

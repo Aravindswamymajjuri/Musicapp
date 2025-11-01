@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 
-const FAV_BASE = 'https://musicapp-7dy9.onrender.com/api/favorites';
-// const FAV_BASE = 'http://localhost:3001/api/favorites';
+// Safe env lookup for backend URL
+const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
+const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
+const API_BASE_URL = envFromProcess || envFromImportMeta || 'http://localhost:3001';
+const FAV_BASE = `${API_BASE_URL}/api/favorites`;
 
 const FavoriteSongs = ({ token, onPlaySong, selectedSongId, toggleFavorite }) => {
   const [favoriteSongs, setFavoriteSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  console.log('FavoriteSongs component token:', token);
 
   // Fetch favorite songs on mount and when token changes or favorites are toggled
   useEffect(() => {

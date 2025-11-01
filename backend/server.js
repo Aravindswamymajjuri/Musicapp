@@ -73,18 +73,11 @@ app.use('/api/favorites', favoritesRoutes);
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // join room; accept either a string roomCode or an object { roomCode, userId }
-  socket.on('joinRoom', (payload) => {
-    try {
-      const roomCode = typeof payload === 'string' ? payload : payload?.roomCode;
-      const userId = typeof payload === 'object' ? payload?.userId : undefined;
-      if (!roomCode) return;
-      if (userId) socket.data.userId = userId;
-      socket.join(roomCode);
-      console.log(`Socket ${socket.id} joined room ${roomCode} (userId=${socket.data.userId || 'unknown'})`);
-    } catch (e) {
-      console.error('joinRoom error:', e);
-    }
+  // join specific room namespace (logical room by roomCode)
+  socket.on('joinRoom', (roomCode) => {
+    if (!roomCode) return;
+    socket.join(roomCode);
+    console.log(`Socket ${socket.id} joined room ${roomCode}`);
   });
 
   socket.on('leaveRoom', (roomCode) => {
@@ -93,46 +86,17 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} left room ${roomCode}`);
   });
 
-  // Host emits hostPlayback -> server broadcasts 'playback' to other members (already implemented)
+  // Host will emit 'hostPlayback' with { roomCode, playback }
+  // Server simply broadcasts 'playback' to everyone in that room (including host if desired)
   socket.on('hostPlayback', (data) => {
     try {
       const { roomCode, playback } = data || {};
       if (!roomCode || !playback) return;
+      // Broadcast to all sockets in the room (except sender)
       socket.to(roomCode).emit('playback', playback);
+      // Optionally also persist / log here if needed
     } catch (e) {
       console.error('Error handling hostPlayback:', e);
-    }
-  });
-
-  // New: allow host to request removal of a user by userId
-  socket.on('removeUser', async (data) => {
-    try {
-      const { roomCode, userId: targetUserId } = data || {};
-      if (!roomCode || !targetUserId) return;
-
-      // Iterate sockets in the room to find the socket with matching stored userId
-      const socketIds = await io.in(roomCode).allSockets(); // returns Set
-      for (const sid of socketIds) {
-        const targetSocket = io.sockets.sockets.get(sid);
-        if (targetSocket && targetSocket.data && String(targetSocket.data.userId) === String(targetUserId)) {
-          // notify the removed socket and disconnect it
-          try {
-            targetSocket.emit('removed', { roomCode, reason: 'kicked' });
-          } catch (e) {}
-          try {
-            targetSocket.leave(roomCode);
-          } catch (e) {}
-          try {
-            targetSocket.disconnect(true);
-          } catch (e) {}
-          console.log(`Removed user socket ${sid} (userId=${targetUserId}) from room ${roomCode}`);
-        }
-      }
-
-      // Notify remaining clients so they can refresh user list
-      io.in(roomCode).emit('userRemoved', { userId: targetUserId });
-    } catch (e) {
-      console.error('removeUser error:', e);
     }
   });
 
@@ -146,4 +110,3 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Export for testing or reuse
-
