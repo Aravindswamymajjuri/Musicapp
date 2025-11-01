@@ -5,7 +5,7 @@ import FavoriteSongs from './favioute'; // Adjust path if needed
 // Safe env lookup for backend URL (REACT_APP_BACKEND_URL from frontend/.env)
 const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
 const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
-const API_BASE_URL = envFromProcess || envFromImportMeta || 'http://localhost:3001';
+const API_BASE_URL = envFromProcess || envFromImportMeta || 'https://musicapp-7dy9.onrender.com';
 const API_SONGS = `${API_BASE_URL}/api/songs`;
 const FAV_BASE = `${API_BASE_URL}/api/favorites`;
 
