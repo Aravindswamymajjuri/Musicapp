@@ -72,7 +72,33 @@ app.use('/api/favorites', favoritesRoutes);
 // Socket.IO event handling - add your logic here
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  // Place your Socket.IO handlers here
+
+  // join specific room namespace (logical room by roomCode)
+  socket.on('joinRoom', (roomCode) => {
+    if (!roomCode) return;
+    socket.join(roomCode);
+    console.log(`Socket ${socket.id} joined room ${roomCode}`);
+  });
+
+  socket.on('leaveRoom', (roomCode) => {
+    if (!roomCode) return;
+    socket.leave(roomCode);
+    console.log(`Socket ${socket.id} left room ${roomCode}`);
+  });
+
+  // Host will emit 'hostPlayback' with { roomCode, playback }
+  // Server simply broadcasts 'playback' to everyone in that room (including host if desired)
+  socket.on('hostPlayback', (data) => {
+    try {
+      const { roomCode, playback } = data || {};
+      if (!roomCode || !playback) return;
+      // Broadcast to all sockets in the room (except sender)
+      socket.to(roomCode).emit('playback', playback);
+      // Optionally also persist / log here if needed
+    } catch (e) {
+      console.error('Error handling hostPlayback:', e);
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
