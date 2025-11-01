@@ -7,6 +7,7 @@ const Header = ({ token, user, onLogout }) => {
   const handleLogoutClick = () => {
     navigate('/login');
     localStorage.removeItem("token")
+    localStorage.removeItem("joinedRoomCode")
   };
 
   return (

@@ -73,6 +73,17 @@ app.use('/api/favorites', favoritesRoutes);
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
+  // map of userId -> socketId stored at server-level
+  // (declared on first connection; kept on module scope if needed)
+  if (!io.userSockets) io.userSockets = new Map();
+
+  // Client can register their authenticated userId after connecting
+  socket.on('registerUser', (userId) => {
+    if (!userId) return;
+    io.userSockets.set(String(userId), socket.id);
+    console.log(`Registered user ${userId} -> socket ${socket.id}`);
+  });
+
   // join specific room namespace (logical room by roomCode)
   socket.on('joinRoom', (roomCode) => {
     if (!roomCode) return;
@@ -87,21 +98,48 @@ io.on('connection', (socket) => {
   });
 
   // Host will emit 'hostPlayback' with { roomCode, playback }
-  // Server simply broadcasts 'playback' to everyone in that room (including host if desired)
+  // Server simply broadcasts 'playback' to everyone in that room (except sender)
   socket.on('hostPlayback', (data) => {
     try {
       const { roomCode, playback } = data || {};
       if (!roomCode || !playback) return;
-      // Broadcast to all sockets in the room (except sender)
       socket.to(roomCode).emit('playback', playback);
-      // Optionally also persist / log here if needed
     } catch (e) {
       console.error('Error handling hostPlayback:', e);
     }
   });
 
+  // Host requests to kick a user by userId
+  // payload: { userId, roomCode }
+  socket.on('kickUser', (payload) => {
+    try {
+      const { userId, roomCode } = payload || {};
+      if (!userId) return;
+      const targetSocketId = io.userSockets.get(String(userId));
+      if (!targetSocketId) {
+        console.log('kickUser: target socket not found for user', userId);
+        return;
+      }
+      // Notify the specific client to force-leave the room
+      io.to(targetSocketId).emit('forceLeave', { roomCode });
+      console.log(`Kicked user ${userId} (socket ${targetSocketId}) from room ${roomCode}`);
+    } catch (e) {
+      console.error('Error handling kickUser:', e);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    // cleanup map entries referencing this socket
+    if (io.userSockets) {
+      for (const [uid, sid] of io.userSockets.entries()) {
+        if (sid === socket.id) {
+          io.userSockets.delete(uid);
+          console.log(`Unregistered user ${uid} from socket ${sid}`);
+          break;
+        }
+      }
+    }
   });
 });
 

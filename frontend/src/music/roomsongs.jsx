@@ -58,6 +58,21 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     socketRef.current = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
     socketRef.current.on('connect', () => {
       socketRef.current.emit('joinRoom', roomCode);
+      // register this client's userId with the server so host can target this user
+      if (userId) socketRef.current.emit('registerUser', userId);
+    });
+
+    // Server can force this client to leave the room (host kicked)
+    socketRef.current.on('forceLeave', (data) => {
+      const { roomCode: kickedFrom } = data || {};
+      // if roomCode provided, ensure it matches current room
+      if (kickedFrom && kickedFrom !== roomCode) return;
+      // clear the stored room flag and navigate out
+      try { localStorage.removeItem('joinedRoomCode'); } catch (e) {}
+      // optionally show a message then leave
+      alert('You have been removed from the room by the host.');
+      // call onLeaveRoom provided by parent to update UI
+      if (typeof onLeaveRoom === 'function') onLeaveRoom();
     });
 
     socketRef.current.on('playback', (playback) => {
@@ -89,7 +104,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     };
     // include deps that affect behavior
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, isHost, allSongs]);
+  }, [roomCode, isHost, allSongs, userId, onLeaveRoom]);
 
   // Fetch room info on mount & poll (avoid loading flicker on every poll)
   useEffect(() => {
@@ -353,7 +368,20 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const removeUser = async (userIdToRemove) => {
     if (!isHost) return alert('Only host can remove users');
     if (userIdToRemove === userId) return alert('Host cannot remove themselves');
-    alert('Remove user functionality needs backend API implementation.');
+
+    try {
+      // Use socket to request server to kick the user (server will send 'forceLeave' to that client)
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('kickUser', { userId: userIdToRemove, roomCode });
+        // Inform host that request was sent — actual disconnect is handled by server -> client
+        alert('Remove request sent to server.');
+      } else {
+        // No socket connection; optionally call a REST endpoint if you implement it on the backend
+        alert('Unable to remove user: no socket connection.');
+      }
+    } catch (e) {
+      alert('Failed to remove user: ' + (e.message || e));
+    }
   };
 
   // Update playback current time
@@ -362,126 +390,95 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     setCurrentTime(audioRef.current.currentTime);
   };
 
-  if (loadingRoom) return <p>Loading room...</p>;
-  if (error) return <p style={{ color: 'red' }}>{error}</p>;
-  if (!room) return <p>Room not found</p>;
+  // MAIN render
+  if (loadingRoom) return <div>Loading room...</div>;
+  if (error) return <div className="error">{error}</div>;
+  if (!room) return null; // safety
 
   return (
-    <div style={{ maxWidth: 900, margin: 'auto', padding: 20 }}>
-      <h2>Room: {room.name || room.code}</h2>
-      <p><strong>Code:</strong> {room.code}</p>
-      <p><strong>Host:</strong> {room.host?.username || '(unknown)'}</p>
+    <div className="room">
+      <div className="room-header">
+        <h2>Room: {room.code}</h2>
+        <button onClick={onLeaveRoom}>Leave Room</button>
+      </div>
 
-      <button type="button" onClick={(e) => { e.preventDefault(); onLeaveRoom(); }} style={{ marginBottom: 20 }}>
-        Leave Room
-      </button>
-
-      <h3>Users in Room ({users.length}):</h3>
-      <ul>
-        {users.map(u => (
-          <li key={u._id}>
-            {u.username || u.email}
-            {isHost && u._id !== userId && (
-              <button type="button" onClick={() => removeUser(u._id)} style={{ marginLeft: 10, color: 'red' }}>
-                Remove
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <h3>Current Song:</h3>
-      {currentSong ? (
-        <div>
-          <p><strong>{currentSong.title || '(unknown title)'}</strong> by {currentSong.artist || '(unknown)'}</p>
-          <audio
-            ref={audioRef}
-            controls={isHost}                      // show native controls only to host
-            autoPlay={isPlaying}
-            onEnded={handleEnded}
-            onTimeUpdate={onTimeUpdate}
-            onPlay={() => { if (isHost) setIsPlaying(true); }}   // guests won't get here because controls hidden
-            onPause={() => { if (isHost) setIsPlaying(false); }}
-            crossOrigin="anonymous"
-            style={{ pointerEvents: isHost ? 'auto' : 'none' }}   // prevent guest interactions
-          />
-          {isHost && (
-            <button type="button" onClick={togglePlayPause} style={{ marginTop: 10 }}>
-              {isPlaying ? 'Pause' : 'Play'}
-            </button>
-          )}
-          {!isHost && (
-            <p style={{ fontSize: 12, color: '#666' }}>Playback controlled by host</p>
-          )}
+      <div className="room-content">
+        <div className="users-list">
+          <h3>Users</h3>
+          <ul>
+            {users.map(u => (
+              <li key={u._id}>
+                {u.name} {u._id === room.host?._id ? '(Host)' : ''}
+                {isHost && u._id !== userId && (
+                  <button onClick={() => removeUser(u._id)}>Remove</button>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
-      ) : (
-        <p>No song is currently playing.</p>
-      )}
 
-      <h3>Queue ({queue.length} songs):</h3>
-      {queue.length === 0 ? (
-        <p>The queue is empty.</p>
-      ) : (
-        <ul>
-          {queue.map((s, i) => (
-            <li key={s._id || i}>{i + 1}. {s.title || s._id} - {s.artist || ''}</li>
-          ))}
-        </ul>
-      )}
-
-      <h3>All Songs in Database</h3>
-      {allSongsLoading && <p>Loading songs...</p>}
-      {allSongsError && <p style={{ color: 'red' }}>{allSongsError}</p>}
-      {!allSongsLoading && !allSongsError && (
-        <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ccc', padding: 10 }}>
-          {allSongs.length === 0 ? (
-            <p>No songs available.</p>
-          ) : (
-            allSongs.map(song => (
-              <div key={song._id} style={{ marginBottom: 8 }}>
-                <strong>{song.title}</strong> by {song.artist || '(unknown)'}
-                <div style={{ marginTop: 6 }}>
-                  {isHost ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!isHost) return;
-                          setCurrentSong(song);
-                          setIsPlaying(true);
-                          setQueue([]); // clear queue when playing manually
-                          if (audioRef.current) {
-                            audioRef.current.src = `${API_SONGS}/${song._id}/stream`;
-                            audioRef.current.load();
-                            audioRef.current.play().catch(() => {});
-                          }
-                          // emit immediate playback change
-                          emitHostPlayback({
-                            currentSongId: song._id,
-                            currentSong: { _id: song._id, title: song.title, artist: song.artist },
-                            currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-                            isPlaying: true,
-                            queue: []
-                          });
-                        }}
-                      >
-                        Play
-                      </button>
-                      <button type="button" onClick={() => addSongToQueue(song)} style={{ marginLeft: 10 }}>
-                        Add to Queue
-                      </button>
-                    </>
-                  ) : (
-                    <button type="button" disabled style={{ opacity: 0.6 }}>
-                      Host only
-                    </button>
-                  )}
-                </div>
+        <div className="playback-controls">
+          <h3>Now Playing</h3>
+          {currentSong ? (
+            <div>
+              <div>{currentSong.title} - {currentSong.artist}</div>
+              <div>
+                <button onClick={togglePlayPause}>
+                  {isPlaying ? 'Pause' : 'Play'}
+                </button>
               </div>
-            ))
+            </div>
+          ) : (
+            <div>No song is currently playing.</div>
           )}
         </div>
-      )}
+
+        <div className="queue">
+          <h3>Queue</h3>
+          <ul>
+            {queue.map((s, idx) => (
+              <li key={s._id}>
+                {s.title} - {s.artist}
+                {isHost && (
+                  <button onClick={() => {
+                    setQueue(prev => prev.filter(q => q._id !== s._id));
+                    emitHostPlayback({
+                      currentSongId: currentSong?._id || null,
+                      currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
+                      currentTime: audioRef.current ? audioRef.current.currentTime : 0,
+                      isPlaying,
+                      queue: queue.filter(q => q._id !== s._id).map(s => s._id || s)
+                    });
+                  }}>Remove</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="all-songs">
+          <h3>All Songs</h3>
+          {allSongsLoading && <div>Loading songs...</div>}
+          {allSongsError && <div className="error">{allSongsError}</div>}
+          <ul>
+            {allSongs.map(song => (
+              <li key={song._id}>
+                {song.title} - {song.artist}
+                {isHost && (
+                  <button onClick={() => addSongToQueue(song)}>Add to Queue</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <audio
+        ref={audioRef}
+        onTimeUpdate={onTimeUpdate}
+        onEnded={handleEnded}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 };
