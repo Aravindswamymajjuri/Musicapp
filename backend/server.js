@@ -73,9 +73,9 @@ app.use('/api/favorites', favoritesRoutes);
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // map of userId -> socketId stored at server-level
-  // (declared on first connection; kept on module scope if needed)
+  // ensure maps exist to track users and latest room playback
   if (!io.userSockets) io.userSockets = new Map();
+  if (!io.roomPlaybacks) io.roomPlaybacks = new Map();
 
   // Client can register their authenticated userId after connecting
   socket.on('registerUser', (userId) => {
@@ -89,6 +89,14 @@ io.on('connection', (socket) => {
     if (!roomCode) return;
     socket.join(roomCode);
     console.log(`Socket ${socket.id} joined room ${roomCode}`);
+
+    // If we have a cached playback for this room, immediately send it to the joining socket
+    const playback = io.roomPlaybacks.get(roomCode);
+    if (playback) {
+      // send only to the newly joined socket so it initializes to host state
+      socket.emit('playback', playback);
+      console.log(`Sent cached playback to ${socket.id} for room ${roomCode}`);
+    }
   });
 
   socket.on('leaveRoom', (roomCode) => {
@@ -103,6 +111,8 @@ io.on('connection', (socket) => {
     try {
       const { roomCode, playback } = data || {};
       if (!roomCode || !playback) return;
+      // persist the latest playback for new joiners (in-memory)
+      try { io.roomPlaybacks.set(roomCode, playback); } catch (e) { /* ignore */ }
       socket.to(roomCode).emit('playback', playback);
     } catch (e) {
       console.error('Error handling hostPlayback:', e);

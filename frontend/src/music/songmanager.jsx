@@ -433,78 +433,87 @@ const SongManager = () => {
       {listError && <p style={{ color: 'red' }}>{listError}</p>}
       {listLoading && <p>Loading songs...</p>}
       {!listLoading && songs.length === 0 && <p>No songs found. Upload some songs first!</p>}
-      {!listLoading && songs.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Title</th>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Artist</th>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Album</th>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Duration (s)</th>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Folder</th>
-              <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {songs.map(({ _id, title, artist, album, duration, folder }) => (
-              <tr key={_id}>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{title}</td>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{artist}</td>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{album}</td>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{duration}</td>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{folder}</td>
-                <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
-                  <button
-                    onClick={() => handlePlaySong(_id)}
-                    style={{
-                      marginRight: 8,
-                      padding: '6px 12px',
-                      backgroundColor: selectedSongId === _id ? '#007bff' : '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {selectedSongId === _id ? 'Playing' : 'Play'}
-                  </button>
 
-                  <button
-                    onClick={() => toggleFavorite(_id)}
-                    aria-label={isFavorited(_id) ? 'Remove from favorites' : 'Add to favorites'}
-                    style={{
-                      marginRight: 8,
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: isFavorited(_id) ? 'red' : 'gray',
-                      fontSize: 20,
-                      verticalAlign: 'middle',
-                    }}
-                  >
-                    {isFavorited(_id) ? '❤️' : '🤍'}
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(_id)}
-                    disabled={deletingId === _id}
-                    style={{
-                      padding: '6px 12px',
-                      backgroundColor: deletingId === _id ? '#ccc' : '#d9534f',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 4,
-                      cursor: deletingId === _id ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {deletingId === _id ? 'Deleting...' : 'Delete'}
-                  </button>
-                </td>
+      {/* NEW: exclude favorite songs from the uploaded songs table */}
+      {!listLoading && songs.length > 0 && (() => {
+        const favIds = new Set((favorites || []).map(f => f.song && f.song._id).filter(Boolean));
+        const filtered = songs.filter(s => !favIds.has(s._id));
+        if (filtered.length === 0) {
+          return <p>All your uploaded songs are in your Favorites list.</p>;
+        }
+        return (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Title</th>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Artist</th>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Album</th>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Duration (s)</th>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Folder</th>
+                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {filtered.map(({ _id, title, artist, album, duration, folder }) => (
+                <tr key={_id}>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{title}</td>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{artist}</td>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{album}</td>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{duration}</td>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{folder}</td>
+                  <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
+                    <button
+                      onClick={() => handlePlaySong(_id)}
+                      style={{
+                        marginRight: 8,
+                        padding: '6px 12px',
+                        backgroundColor: selectedSongId === _id ? '#007bff' : '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {selectedSongId === _id ? 'Playing' : 'Play'}
+                    </button>
+
+                    <button
+                      onClick={() => toggleFavorite(_id)}
+                      aria-label={isFavorited(_id) ? 'Remove from favorites' : 'Add to favorites'}
+                      style={{
+                        marginRight: 8,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: isFavorited(_id) ? 'red' : 'gray',
+                        fontSize: 20,
+                        verticalAlign: 'middle',
+                      }}
+                    >
+                      {isFavorited(_id) ? '❤️' : '🤍'}
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(_id)}
+                      disabled={deletingId === _id}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: deletingId === _id ? '#ccc' : '#d9534f',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 4,
+                        cursor: deletingId === _id ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {deletingId === _id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      })()}
 
       {/* Favorite Songs Component */}
       <FavoriteSongs
