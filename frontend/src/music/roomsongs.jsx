@@ -5,7 +5,7 @@ import './roomsongs.css';
 // Safe environment lookup to avoid ReferenceError in browser
 const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
 const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
-const API_BASE = envFromProcess || envFromImportMeta || 'http://localhost:3001';
+const API_BASE = envFromProcess || envFromImportMeta || 'https://musicapp-7dy9.onrender.com';
 const API_ROOMS = `${API_BASE}/api/rooms`;
 const API_SONGS = `${API_BASE}/api/songs`;
 const SOCKET_URL = API_BASE;
