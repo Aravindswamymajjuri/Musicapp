@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import './roomsongs.css';
 
 // Safe environment lookup to avoid ReferenceError in browser
 const envFromProcess = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : null;
 const envFromImportMeta = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL) : null;
-const API_BASE = envFromProcess || envFromImportMeta || 'https://musicapp-7dy9.onrender.com';
+const API_BASE = envFromProcess || envFromImportMeta || 'http://localhost:3001';
 const API_ROOMS = `${API_BASE}/api/rooms`;
 const API_SONGS = `${API_BASE}/api/songs`;
 const SOCKET_URL = API_BASE;
@@ -27,6 +28,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const [currentSong, setCurrentSong] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(0);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   // Users and host state
@@ -37,8 +39,8 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const [playbackEnabled, setPlaybackEnabled] = useState(false);
 
   const audioRef = useRef(null);
-  // track pending audio src/listener to avoid races
   const audioPendingRef = useRef({ src: null, listener: null });
+  const playedStackRef = useRef([]);
   const socketRef = useRef(null);
   const initialLoad = useRef(true);
 
@@ -59,7 +61,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }
   };
 
-  // NEW: persist playback state to server immediately (so joiners/DB see it)
+  // persist playback state to server immediately
   const persistPlayback = async (payload) => {
     try {
       await fetch(`${API_ROOMS}/${roomCode}/playback`, {
@@ -80,29 +82,21 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     socketRef.current = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
     socketRef.current.on('connect', () => {
       socketRef.current.emit('joinRoom', roomCode);
-      // register this client's userId with the server so host can target this user
       if (userId) socketRef.current.emit('registerUser', userId);
     });
 
-    // Server can force this client to leave the room (host kicked)
     socketRef.current.on('forceLeave', (data) => {
       const { roomCode: kickedFrom } = data || {};
-      // if roomCode provided, ensure it matches current room
       if (kickedFrom && kickedFrom !== roomCode) return;
-      // clear the stored room flag and navigate out
       try { localStorage.removeItem('joinedRoomCode'); } catch (e) {}
-      // optionally show a message then leave
       alert('You have been removed from the room by the host.');
-      // call onLeaveRoom provided by parent to update UI
       if (typeof onLeaveRoom === 'function') onLeaveRoom();
     });
 
     socketRef.current.on('playback', (playback) => {
       if (!playback) return;
-      // Guests should apply host playback
       if (isHost) return;
       if (playback.currentSong) {
-        // playback may contain a lightweight song object
         setCurrentSong(playback.currentSong);
       } else if (playback.currentSongId) {
         const found = allSongs.find(s => s._id === playback.currentSongId);
@@ -124,147 +118,154 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         socketRef.current.disconnect();
       }
     };
-    // include deps that affect behavior
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isHost, allSongs, userId, onLeaveRoom]);
 
-  // Fetch room info on mount & poll (avoid loading flicker on every poll)
+  // Fetch room info on mount & poll
   useEffect(() => {
-	let mounted = true;
-	let backoff = 2000; // initial delay 2s
-	const MAX_BACKOFF = 60000; // cap 1 minute
-	let timer = null;
+    let mounted = true;
+    let backoff = 2000;
+    const MAX_BACKOFF = 60000;
+    let timer = null;
 
-	const schedule = (delay) => {
-		if (!mounted) return;
-		timer = setTimeout(runFetchRoom, delay);
-	};
+    const schedule = (delay) => {
+      if (!mounted) return;
+      timer = setTimeout(runFetchRoom, delay);
+    };
 
-	const runFetchRoom = async () => {
-		if (!mounted) return;
+    const runFetchRoom = async () => {
+      if (!mounted) return;
 
-		// If offline, increase backoff and reschedule
-		if (typeof navigator !== 'undefined' && !navigator.onLine) {
-			console.warn('Offline - skipping room fetch');
-			backoff = Math.min(MAX_BACKOFF, backoff * 2);
-			schedule(backoff);
-			return;
-		}
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        console.warn('Offline - skipping room fetch');
+        backoff = Math.min(MAX_BACKOFF, backoff * 2);
+        schedule(backoff);
+        return;
+      }
 
-		if (initialLoad.current) setLoadingRoom(true);
-		setError('');
-		try {
-			const res = await fetch(`${API_ROOMS}/${roomCode}`, {
-				headers: token ? { Authorization: `Bearer ${token}` } : {},
-			});
-			if (!res.ok) {
-				const data = await res.json().catch(() => ({}));
-				throw new Error(data.error || `Room fetch failed: ${res.status}`);
-			}
-			const data = await res.json();
-
-			// Apply server playback conservatively (unchanged logic)
-			const applyServerPlayback = (server) => {
-				// update static room/users info (safe)
-				setRoom(server);
-				setUsers(server.users || []);
-				setIsHost(!!(server.host && server.host._id === userId));
-
-				// If this client is host, don't override host playback/queue
-				if (server.host && server.host._id === userId) return;
-
-				const serverSongId = server.currentSong?._id || server.currentSongId || null;
-				const localSongId = currentSong?._id || null;
-				if (serverSongId !== localSongId) {
-					if (serverSongId) {
-						const found = allSongs.find(s => s._id === serverSongId);
-						setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
-					} else {
-						setCurrentSong(null);
-					}
-				}
-
-				const serverTime = typeof server.currentTime === 'number' ? server.currentTime : 0;
-				if (audioRef.current) {
-					const audioTime = audioRef.current.currentTime || 0;
-					if (Math.abs(audioTime - serverTime) > 1) {
-						try { audioRef.current.currentTime = serverTime; } catch (e) {}
-						setCurrentTime(serverTime);
-					}
-				} else {
-					setCurrentTime(serverTime);
-				}
-
-				if (typeof server.isPlaying === 'boolean' && server.isPlaying !== isPlaying) {
-					setIsPlaying(server.isPlaying);
-				}
-
-				if (Array.isArray(server.queue)) {
-					const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
-					const localQueueIds = queue.map(q => q._id || q);
-					if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
-						const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
-						setQueue(mapped);
-					}
-				}
-			};
-
-			applyServerPlayback(data);
-
-			// success -> reset backoff for next poll
-			backoff = isHost ? 5000 : 2000;
-		} catch (err) {
-			console.warn('fetchRoom error:', err);
-			// Surface user-friendly message (keeps UI recoverable)
-			setError(err.message || 'Failed to load room');
-			// increase backoff to avoid noisy retries
-			backoff = Math.min(MAX_BACKOFF, backoff * 2);
-		} finally {
-			if (initialLoad.current) {
-				setLoadingRoom(false);
-				initialLoad.current = false;
-			}
-			// schedule next poll according to role/backoff
-			schedule(backoff);
-		}
-	};
-
-	// start immediately
-	schedule(0);
-
-	return () => {
-		mounted = false;
-		if (timer) clearTimeout(timer);
-	};
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [roomCode, token, userId, isHost, queue, currentSong, isPlaying, allSongs]);
-
-  // Fetch all songs from DB for UI
-  useEffect(() => {
-    const fetchSongs = async () => {
-      setAllSongsLoading(true);
-      setAllSongsError('');
+      if (initialLoad.current) setLoadingRoom(true);
+      setError('');
       try {
-        const res = await fetch(API_SONGS, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-        if (!res.ok) throw new Error(`Failed to fetch songs: ${res.status}`);
+        const res = await fetch(`${API_ROOMS}/${roomCode}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Room fetch failed: ${res.status}`);
+        }
         const data = await res.json();
-        setAllSongs(data);
+
+        const applyServerPlayback = (server) => {
+          setRoom(server);
+          setUsers(server.users || []);
+          setIsHost(!!(server.host && server.host._id === userId));
+
+          if (server.host && server.host._id === userId) return;
+
+          const serverSongId = server.currentSong?._id || server.currentSongId || null;
+          const localSongId = currentSong?._id || null;
+          if (serverSongId !== localSongId) {
+            if (serverSongId) {
+              const found = allSongs.find(s => s._id === serverSongId);
+              setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
+            } else {
+              setCurrentSong(null);
+            }
+          }
+
+          const serverTime = typeof server.currentTime === 'number' ? server.currentTime : 0;
+          if (audioRef.current) {
+            const audioTime = audioRef.current.currentTime || 0;
+            if (Math.abs(audioTime - serverTime) > 1) {
+              try { audioRef.current.currentTime = serverTime; } catch (e) {}
+              setCurrentTime(serverTime);
+            }
+          } else {
+            setCurrentTime(serverTime);
+          }
+
+          if (typeof server.isPlaying === 'boolean' && server.isPlaying !== isPlaying) {
+            setIsPlaying(server.isPlaying);
+          }
+
+          if (Array.isArray(server.queue)) {
+            const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
+            const localQueueIds = queue.map(q => q._id || q);
+            if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
+              const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
+              setQueue(mapped);
+            }
+          }
+        };
+
+        applyServerPlayback(data);
+        backoff = isHost ? 5000 : 2000;
       } catch (err) {
-        setAllSongsError(err.message || 'Error fetching songs');
-        setAllSongs([]);
+        console.warn('fetchRoom error:', err);
+        setError(err.message || 'Failed to load room');
+        backoff = Math.min(MAX_BACKOFF, backoff * 2);
       } finally {
-        setAllSongsLoading(false);
+        if (initialLoad.current) {
+          setLoadingRoom(false);
+          initialLoad.current = false;
+        }
+        schedule(backoff);
       }
     };
-    fetchSongs();
-  }, [token]);
 
-  // Host pushes playback updates (REST persist) and emits socket for instant guest updates
+    schedule(0);
+
+    return () => {
+      mounted = false;
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, token, userId, isHost, queue, currentSong, isPlaying, allSongs]);
+
+  // Load cached songs and refresh
+  useEffect(() => {
+    const cached = sessionStorage.getItem('rs_songs_v1');
+    if (cached) {
+      try { setAllSongs(JSON.parse(cached)); } catch (e) {}
+    }
+    refreshAllSongs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshAllSongs = async () => {
+    setAllSongsLoading(true);
+    setAllSongsError('');
+    const controller = new AbortController();
+    try {
+      const res = await fetch(API_SONGS, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal });
+      if (!res.ok) throw new Error(`Failed to fetch songs: ${res.status}`);
+      const data = await res.json();
+      setAllSongs(data);
+      try { sessionStorage.setItem('rs_songs_v1', JSON.stringify(data)); } catch (e) {}
+    } catch (err) {
+      console.warn('refreshAllSongs error', err);
+      setAllSongsError(err.message || 'Error fetching songs');
+    } finally {
+      setAllSongsLoading(false);
+    }
+  };
+
+  const groupedByAlbum = React.useMemo(() => {
+    return (allSongs || []).reduce((acc, s) => {
+      const a = (s.album || '').trim() || 'Uncategorized';
+      (acc[a] = acc[a] || []).push(s);
+      return acc;
+    }, {});
+  }, [allSongs]);
+
+  const [albumExpanded, setAlbumExpanded] = useState({});
+
+  // Host pushes playback updates
   useEffect(() => {
     if (!isHost) return;
     let mounted = true;
-    let backoff = 2000; // start 2s
-    const MAX_BACKOFF = 60000; // 1 minute
+    let backoff = 2000;
+    const MAX_BACKOFF = 60000;
 
     const schedule = (delay) => {
       if (!mounted) return;
@@ -274,12 +275,10 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     const runTick = async () => {
       if (!mounted) return;
       if (!room) {
-        // if no room yet, retry after short delay
         timer = schedule(2000);
         return;
       }
 
-      // If offline, skip and backoff
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         console.warn('Navigator offline - skipping playback persist');
         backoff = Math.min(MAX_BACKOFF, backoff * 2);
@@ -305,14 +304,11 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
           body: JSON.stringify(payload),
         });
         if (!res.ok) {
-          // non-2xx response - treat like an error but do not throw raw for network
           console.warn('Playback persist returned', res.status);
         }
-        // success -> reset backoff
         backoff = 2000;
       } catch (e) {
         console.warn('REST playback update failed', e);
-        // increase backoff on failure
         backoff = Math.min(MAX_BACKOFF, backoff * 2);
       }
 
@@ -322,7 +318,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         // ignore socket errors
       }
 
-      // schedule next run
       timer = schedule(backoff);
     };
 
@@ -334,11 +329,11 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, currentSong, isPlaying, queue, room, roomCode, token]);
 
-  // Guests sync their audio player to host playback state
+  // Guests sync their audio player
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (isHost) return; // host controls local player
+    if (isHost) return;
 
     if (!currentSong) {
       audio.pause();
@@ -347,25 +342,16 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }
 
     const streamUrl = `${API_SONGS}/${currentSong._id}/stream`;
-
-    // set crossOrigin and preload so metadata and range requests work reliably
     audio.crossOrigin = 'anonymous';
     audio.preload = 'metadata';
 
-    // compare by id to avoid absolute/relative URL differences
     const srcIncludesId = audio.src && String(audio.src).includes(currentSong._id);
     if (!srcIncludesId) {
-      // ensure audio element can load even if controls hidden
-      audio.style.width = '100%';
-      audio.style.height = '1px';
-      // delegate src/load/play handling to helper to avoid race conditions
       applyAudioSrc(streamUrl, isPlaying && playbackEnabled);
       return;
     }
 
-    // same source: adjust time within tolerance and play/pause (but only after metadata is available)
     const trySyncTime = () => {
-      // ensure duration is set before syncing time
       try { if (typeof audio.duration === 'number' && !Number.isNaN(audio.duration)) setCurrentDuration(audio.duration); } catch (e) {}
       if (!Number.isNaN(currentTime) && Math.abs(audio.currentTime - currentTime) > 1) {
         try { audio.currentTime = currentTime; } catch (e) {}
@@ -375,7 +361,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     };
 
     if (isNaN(audio.duration) || audio.duration === 0) {
-      // wait for metadata then sync
       const onLoadedMeta = () => {
         try { if (typeof audio.duration === 'number' && !Number.isNaN(audio.duration)) setCurrentDuration(audio.duration); } catch (e) {}
         trySyncTime();
@@ -387,9 +372,9 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }
   }, [currentSong, currentTime, isPlaying, isHost, playbackEnabled]);
 
-  // NEW: ensure host's local audio player receives src/time/play when host changes currentSong or toggles playback
+  // Host's local audio player
   useEffect(() => {
-    if (!isHost) return; // only apply for host's local player
+    if (!isHost) return;
     if (!audioRef.current) return;
 
     if (!currentSong) {
@@ -399,20 +384,17 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }
 
     const streamUrl = `${API_SONGS}/${currentSong._id}/stream`;
-    // compare by id substring to avoid absolute/relative URL mismatches
     const srcIncludesId = audioRef.current.src && String(audioRef.current.src).includes(currentSong._id);
     if (!srcIncludesId) {
       applyAudioSrc(streamUrl, isPlaying);
     }
 
-    // set duration when metadata available for host
     const onLoadedMetaHost = () => {
       try { if (typeof audioRef.current.duration === 'number' && !Number.isNaN(audioRef.current.duration)) setCurrentDuration(audioRef.current.duration); } catch (e) {}
       audioRef.current.removeEventListener('loadedmetadata', onLoadedMetaHost);
     };
     audioRef.current.addEventListener('loadedmetadata', onLoadedMetaHost);
 
-    // apply playback state (play/pause) and keep time in sync if possible
     if (!Number.isNaN(currentTime) && currentTime > 0 && audioRef.current.duration && currentTime < audioRef.current.duration) {
       try { audioRef.current.currentTime = currentTime; } catch (e) {}
     }
@@ -425,60 +407,58 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
   // Host adds a song to the queue
   const addSongToQueue = (song) => {
-    if (!isHost) return; // guard: only host may modify queue
+    if (!isHost) return;
     console.debug('addSongToQueue', song._id);
     setQueue(prev => {
-      const newQ = [...prev, song];
-      // if nothing is playing, start immediately and emit
-      if (!currentSong) {
-        setCurrentSong(song);
-        setIsPlaying(true);
-        if (audioRef.current) {
-          applyAudioSrc(`${API_SONGS}/${song._id}/stream`, true);
-        }
-        // emit immediate playback with the new song and queue
-        const payload = {
-          currentSongId: song._id,
-          currentSong: { _id: song._id, title: song.title, artist: song.artist },
-          currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-          isPlaying: true,
-          queue: newQ.map(s => s._id || s)
-        };
-        emitHostPlayback(payload);
-        persistPlayback(payload);
-      } else {
-        // just emit queue change
-        const payload = {
-          currentSongId: currentSong?._id || null,
-          currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
-          currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-          isPlaying,
-          queue: newQ.map(s => s._id || s)
-        };
-        emitHostPlayback(payload);
-        persistPlayback(payload);
+      if (currentSong && currentSong._id) {
+        playedStackRef.current.push(currentSong);
       }
-      return newQ;
-    });
+      const newQ = [...prev, song];
+       if (!currentSong) {
+         setCurrentSong(song);
+         setIsPlaying(true);
+         if (audioRef.current) {
+           applyAudioSrc(`${API_SONGS}/${song._id}/stream`, true);
+         }
+         const payload = {
+           currentSongId: song._id,
+           currentSong: { _id: song._id, title: song.title, artist: song.artist },
+           currentTime: audioRef.current ? audioRef.current.currentTime : 0,
+           isPlaying: true,
+           queue: newQ.map(s => s._id || s)
+         };
+         emitHostPlayback(payload);
+         persistPlayback(payload);
+       } else {
+         const payload = {
+           currentSongId: currentSong?._id || null,
+           currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
+           currentTime: audioRef.current ? audioRef.current.currentTime : 0,
+           isPlaying,
+           queue: newQ.map(s => s._id || s)
+         };
+         emitHostPlayback(payload);
+         persistPlayback(payload);
+       }
+       return newQ;
+     });
   };
 
-  // Host toggles play/pause manually
+  // Host toggles play/pause
   const togglePlayPause = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!isHost) return; // guard: only host may toggle
+    if (!isHost) return;
     if (!audioRef.current) return;
     const newPlaying = !isPlaying;
     console.debug('togglePlayPause ->', newPlaying);
     if (newPlaying) {
       audioRef.current.crossOrigin = 'anonymous';
       audioRef.current.preload = 'metadata';
-      // try to play; handle blocked play
       audioRef.current.play().catch((err) => { console.warn('play blocked', err); });
     } else {
       audioRef.current.pause();
     }
     setIsPlaying(newPlaying);
-    // emit new playback state immediately
     const payload = {
       currentSongId: currentSong?._id || null,
       currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
@@ -490,13 +470,15 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     persistPlayback(payload);
   };
 
-  // When current song ends, play the next song in the queue
+  // When current song ends
   const handleEnded = () => {
+    if (currentSong && currentSong._id) {
+      playedStackRef.current.push(currentSong);
+    }
     setQueue(prev => {
       if (prev.length <= 1) {
         setCurrentSong(null);
         setIsPlaying(false);
-        // emit stop
         const payload = { currentSongId: null, currentSong: null, currentTime: 0, isPlaying: false, queue: [] };
         emitHostPlayback(payload);
         persistPlayback(payload);
@@ -505,7 +487,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       const [, ...rest] = prev;
       const next = rest[0] || null;
       setCurrentSong(next);
-      // emit next-song playback (and persist)
       const payload = {
         currentSongId: next ? next._id : null,
         currentSong: next ? { _id: next._id, title: next.title, artist: next.artist } : null,
@@ -519,29 +500,64 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     });
   };
 
-  // Update playback current time (used by audio onTimeUpdate)
+  // Update playback current time
   const onTimeUpdate = () => {
     if (!audioRef.current) return;
     const t = audioRef.current.currentTime;
     setCurrentTime(t);
   };
 
-  // Placeholder for removing users (needs backend support)
+  // Update buffered and duration
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onProgress = () => {
+      try {
+        const buf = audio.buffered;
+        if (buf && buf.length > 0) {
+          const end = buf.end(buf.length - 1);
+          setBufferedEnd(end || 0);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const onLoadedMeta = () => {
+      try {
+        if (typeof audio.duration === 'number' && !Number.isNaN(audio.duration)) {
+          setCurrentDuration(audio.duration);
+        }
+      } catch (e) {}
+    };
+
+    audio.addEventListener('progress', onProgress);
+    audio.addEventListener('loadedmetadata', onLoadedMeta);
+
+    try { if (audio.duration && !Number.isNaN(audio.duration)) setCurrentDuration(audio.duration); } catch (e) {}
+    onProgress();
+
+    return () => {
+      try { audio.removeEventListener('progress', onProgress); } catch (e) {}
+      try { audio.removeEventListener('loadedmetadata', onLoadedMeta); } catch (e) {}
+      setBufferedEnd(0);
+    };
+  }, [currentSong, isHost, playbackEnabled]);
+
+  // Remove user
   const removeUser = async (userIdToRemove) => {
     if (!isHost) return alert('Only host can remove users');
     if (userIdToRemove === userId) return alert('You cannot remove yourself');
     if (!window.confirm('Remove this user from the room?')) return;
     try {
-      // Prefer socket-based kick (server will send 'forceLeave' to target client)
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('kickUser', { userId: userIdToRemove, roomCode });
-        // optimistic local update so UI reflects removal immediately
         setUsers(prev => prev.filter(u => u._id !== userIdToRemove));
         alert('Removal request sent to server.');
         return;
       }
 
-      // Fallback: attempt REST call if you have an API route for removing users
       const res = await fetch(`${API_ROOMS}/${roomCode}/users`, {
         method: 'DELETE',
         headers: {
@@ -561,7 +577,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }
   };
 
-  // Helper: resolve a queue entry (id or object) to an object with at least _id/title/artist
+  // Helper: resolve queue entry
   const resolveSongObj = (entry) => {
     if (!entry) return null;
     if (typeof entry === 'string') {
@@ -572,9 +588,12 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     return entry;
   };
 
-  // Host: play this song immediately (clear queue and start playing)
+  // Host: play now
   const playNow = (song) => {
     if (!isHost) return;
+    if (currentSong && currentSong._id) {
+      playedStackRef.current.push(currentSong);
+    }
     setQueue([]);
     setCurrentSong(song);
     setIsPlaying(true);
@@ -592,12 +611,37 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     persistPlayback(payload);
   };
 
-  // Helper to set audio src and play only after canplay to avoid races/AbortError
-  const applyAudioSrc = (url, shouldPlay = false) => {
+  // tiny prefetch helper to warm connection and start preload
+  const prefetchAudio = (url) => {
+		try {
+			const u = new URL(url);
+			const origin = u.origin;
+			const pc = document.createElement('link');
+			pc.rel = 'preconnect';
+			pc.href = origin;
+			pc.crossOrigin = '';
+			document.head.appendChild(pc);
+			setTimeout(() => { try { document.head.removeChild(pc); } catch (e) {} }, 30000);
+		} catch (e) {}
+		try {
+			const pl = document.createElement('link');
+			pl.rel = 'preload';
+			pl.as = 'audio';
+			pl.href = url;
+			document.head.appendChild(pl);
+			setTimeout(() => { try { document.head.removeChild(pl); } catch (e) {} }, 30000);
+		} catch (e) {}
+	};
+
+  // Helper to set audio src
+  function applyAudioSrc(url, shouldPlay = false) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    // clear current source when no url
+    // NEW: warm the connection / request early bytes
+    try { prefetchAudio(url); } catch (e) {}
+
+    // clear when no url requested
     if (!url) {
       try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
       audioPendingRef.current.src = null;
@@ -608,14 +652,18 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       return;
     }
 
-    // if same source, just play/pause
-    if (audio.src && String(audio.src).includes(url)) {
-      if (shouldPlay) audio.play().catch(() => {});
-      else audio.pause();
-      return;
-    }
+    try {
+      // ensure audio element is set for streaming
+      audio.crossOrigin = 'anonymous';
+      audio.preload = 'auto';
+      if (audio.src && String(audio.src).includes(url)) {
+        if (shouldPlay) audio.play().catch(() => {});
+        else audio.pause();
+        return;
+      }
+    } catch (e) { /* ignore */ }
 
-    // remove previous pending listener if any
+    // remove any previous pending listener
     if (audioPendingRef.current.listener) {
       try { audio.removeEventListener('canplay', audioPendingRef.current.listener); } catch (e) {}
       audioPendingRef.current.listener = null;
@@ -623,7 +671,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
     audioPendingRef.current.src = url;
     const onCanPlay = () => {
-      // ensure this listener is for the current pending src
       if (!audioPendingRef.current.src || !(String(audio.src).includes(audioPendingRef.current.src))) {
         try { audio.removeEventListener('canplay', onCanPlay); } catch (e) {}
         audioPendingRef.current.listener = null;
@@ -636,7 +683,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
     audioPendingRef.current.listener = onCanPlay;
     audio.crossOrigin = 'anonymous';
-    audio.preload = 'metadata';
+    audio.preload = 'auto';
     try {
       audio.removeAttribute('src');
       audio.src = url;
@@ -645,10 +692,111 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     } catch (e) {
       console.warn('applyAudioSrc error', e);
     }
+  }
+
+  // Seek by offset
+  const seekBy = (offsetSeconds) => {
+    if (!isHost) {
+      alert('Only host can seek playback in the room.');
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      const duration = audio.duration || currentDuration || 0;
+      let t = (audio.currentTime || 0) + offsetSeconds;
+      if (t < 0) t = 0;
+      if (duration && t > duration) t = duration - 0.1;
+      audio.currentTime = t;
+      setCurrentTime(t);
+      const payload = {
+        currentSongId: currentSong?._id || null,
+        currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
+        currentTime: t,
+        isPlaying,
+        queue: queue.map(s => s._id || s),
+      };
+      emitHostPlayback(payload);
+      persistPlayback(payload);
+    } catch (e) {
+      console.warn('seekBy error', e);
+    }
+  };
+  
+  // Play previous
+  const playPrevious = () => {
+    if (!isHost) {
+      alert('Only host can change tracks in the room.');
+      return;
+    }
+    const prev = playedStackRef.current.pop();
+    if (!prev) {
+      alert('No previous track in history.');
+      return;
+    }
+    setCurrentSong(prev);
+    setIsPlaying(true);
+    if (audioRef.current) {
+      applyAudioSrc(`${API_SONGS}/${prev._id}/stream`, true);
+    }
+    const payload = {
+      currentSongId: prev._id,
+      currentSong: { _id: prev._id, title: prev.title, artist: prev.artist },
+      currentTime: 0,
+      isPlaying: true,
+      queue: queue.map(s => s._id || s),
+    };
+    emitHostPlayback(payload);
+    persistPlayback(payload);
+  };
+
+  // Skip next
+  const skipNext = () => {
+    if (!isHost) { alert('Only host can skip to next track.'); return; }
+    handleEnded();
+  };
+  
+  // Render album block
+  const renderAlbumBlock = (albumName, list) => {
+    const LIMIT = 100;
+    const expanded = !!albumExpanded[albumName];
+    const visible = expanded ? list : list.slice(0, LIMIT);
+
+    return (
+      <div key={albumName} className="album-block">
+        <h3>{albumName}</h3>
+        <table className="album-table">
+          <tbody>
+            {visible.map(s => (
+              <tr key={s._id}>
+                <td>{s.title} - {s.artist}</td>
+                <td>
+                  {isHost ? (
+                    <>
+                      <button onClick={() => playNow(s)}>Play Now</button>
+                      <button onClick={() => addSongToQueue(s)}>Add to Queue</button>
+                    </>
+                  ) : (
+                    <button onClick={() => alert('Only host can add or play songs')} disabled>Host only</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {list.length > LIMIT && (
+          <div className="album-show-more">
+            <button onClick={() => setAlbumExpanded(prev => ({ ...prev, [albumName]: !prev[albumName] }))}>
+              {expanded ? `Show less (${list.length})` : `Show more (${list.length - LIMIT})`}
+            </button>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // MAIN render
-  if (loadingRoom) return <div>Loading room...</div>;
+  if (loadingRoom) return <div className="loading">Loading room...</div>;
   if (error) return <div className="error">{error}</div>;
 
   return (
@@ -658,27 +806,32 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         <div>Host: {room?.host?.username || room?.host?.name || room?.host?.email || 'Unknown'}</div>
         <div>Users: {users.length}</div>
       </div>
-      <div className="error">{error}</div>
+      {error && <div className="error">{error}</div>}
 
       <div className="songs">
         <h3>All Songs</h3>
-        {allSongsLoading && <div>Loading songs...</div>}
+        {allSongsLoading && <div className="loading">Loading songs...</div>}
         {allSongsError && <div className="error">{allSongsError}</div>}
-        <ul>
-          {allSongs.map(song => (
-            <li key={song._id}>
-              {song.title} - {song.artist}
-              {isHost ? (
-                <>
-                  <button onClick={() => playNow(song)} style={{ marginRight: 8 }}>Play Now</button>
-                  <button onClick={() => addSongToQueue(song)}>Add to Queue</button>
-                </>
-              ) : (
-                <button onClick={() => alert('Only host can add or play songs in the room')} disabled style={{ marginLeft: 8, opacity: 0.6 }}>Host only</button>
-              )}
-            </li>
-          ))}
-        </ul>
+        
+        {Object.keys(groupedByAlbum).length > 0 ? (
+          Object.keys(groupedByAlbum).map(albumName => renderAlbumBlock(albumName, groupedByAlbum[albumName]))
+        ) : (
+          <ul>
+            {allSongs.map(song => (
+              <li key={song._id}>
+                {song.title} - {song.artist}
+                {isHost ? (
+                  <>
+                    <button onClick={() => playNow(song)}>Play Now</button>
+                    <button onClick={() => addSongToQueue(song)}>Add to Queue</button>
+                  </>
+                ) : (
+                  <button onClick={() => alert('Only host can add or play songs in the room')} disabled>Host only</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="queue">
@@ -714,10 +867,23 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       </div>
 
       <div className="controls">
-        <button onClick={togglePlayPause}>{isPlaying ? 'Pause' : 'Play'}</button>
-        <button onClick={handleEnded}>Next</button>
+        <button onClick={playPrevious} disabled={!isHost} title="Previous">
+          {isHost ? 'Prev' : 'Prev (host only)'}
+        </button>
+        <button onClick={() => seekBy(-10)} disabled={!isHost} title="Rewind 10s">
+          {isHost ? '« 10s' : '«'}
+        </button>
+        <button onClick={togglePlayPause}>
+          {isPlaying ? 'Pause' : 'Play'}
+        </button>
+        <button onClick={() => seekBy(10)} disabled={!isHost} title="Forward 10s">
+          {isHost ? '10s »' : '»'}
+        </button>
+        <button onClick={skipNext} disabled={!isHost} title="Next">
+          {isHost ? 'Next' : 'Next (host only)'}
+        </button>
       </div>
-
+ 
       {isHost && (
         <div className="host-controls">
           <h3>Host Controls</h3>
@@ -756,7 +922,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       </div>
 
       {!isHost && currentSong && !playbackEnabled && (
-        <div style={{ marginTop: 10 }}>
+        <div className="enable-playback-container">
           <button
             onClick={() => {
               setPlaybackEnabled(true);
@@ -769,14 +935,27 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       )}
 
       {currentSong && (
-        <div className="playback-info" style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 'bold' }}>{currentSong.title} — {currentSong.artist}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
-            <div style={{ width: 200, height: 8, background: '#eee', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ width: currentDuration > 0 ? `${Math.min(100, (currentTime / currentDuration) * 100)}%` : '0%', height: '100%', background: '#007bff' }} />
-            </div>
-            <div style={{ minWidth: 80, fontSize: 12, color: '#333' }}>
-              {formatTime(currentTime)} / {currentDuration ? formatTime(currentDuration) : '--:--'}
+        <div className="playback-info">
+          <div>{currentSong.title} — {currentSong.artist}</div>
+          <div className="playback-progress-container">
+            <div className="playback-progress-wrapper">
+              <div className="playback-progress-bar">
+                <div 
+                  className="playback-progress-buffered"
+                  style={{
+                    width: currentDuration > 0 ? `${Math.min(100, (bufferedEnd / currentDuration) * 100)}%` : '0%'
+                  }}
+                />
+                <div 
+                  className="playback-progress-played"
+                  style={{
+                    width: currentDuration > 0 ? `${Math.min(100, (currentTime / currentDuration) * 100)}%` : '0%'
+                  }}
+                />
+              </div>
+              <div className="playback-progress-time">
+                Loaded: {currentDuration > 0 ? Math.round(Math.min(100, (bufferedEnd / currentDuration) * 100)) : 0}% — {formatTime(currentTime)} / {currentDuration ? formatTime(currentDuration) : '--:--'}
+              </div>
             </div>
           </div>
         </div>
@@ -789,12 +968,11 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         onTimeUpdate={onTimeUpdate}
         onEnded={handleEnded}
         controls={isHost}
-        style={{ width: '100%', height: isHost ? 'auto' : 1, opacity: isHost ? 1 : 0.001 }}
+        className={isHost ? '' : 'hidden-audio'}
       />
     </div>
   );
-
-}; // close Room component
+};
 
 export default Room;
 

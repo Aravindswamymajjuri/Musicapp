@@ -27,7 +27,10 @@ router.post('/', authenticateToken, async (req, res) => {
         song: songId
       });
       await favorite.save();
-      return res.status(201).json({ message: 'Added to favorites', favorite });
+
+      // Populate only necessary song fields to keep payload small
+      const populated = await Favorite.findById(favorite._id).populate('song', 'title artist album duration');
+      return res.status(201).json({ message: 'Added to favorites', favorite: populated });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -37,8 +40,9 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get all favorite songs of the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    // Populate only essential metadata fields for songs
     const favorites = await Favorite.find({ user: req.user.id })
-      .populate('song')
+      .populate('song', 'title artist album duration')
       .sort({ addedAt: -1 });
 
     res.json(favorites);

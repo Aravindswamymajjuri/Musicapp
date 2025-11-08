@@ -61,6 +61,28 @@ const roomsRoutes = require('./routes/room');
 const listeningHistoryRoutes = require('./routes/listenhistory'); // fixed filename
 const favoritesRoutes = require('./routes/faviourt'); // fixed filename
 
+// IMPORTANT: add a multi-upload endpoint BEFORE mounting the songs router
+// so callers can choose batch upload without changing existing single-file logic.
+app.post('/api/songs/multi-upload', upload.array('files', 50), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+    // Build response with GridFS file info
+    const filesInfo = (req.files || []).map(f => ({
+      id: f.id || f._id || null,
+      filename: f.filename,
+      originalname: f.originalname,
+      size: f.size,
+      contentType: f.contentType || f.mimetype || null
+    }));
+    return res.json({ uploaded: filesInfo });
+  } catch (e) {
+    console.error('multi-upload error', e);
+    return res.status(500).json({ error: 'Multi upload failed' });
+  }
+});
+
 // Mount routers: Each router handles its own paths
 app.use('/api/auth', authRoutes);
 app.use('/api/songs', songsRoutes);

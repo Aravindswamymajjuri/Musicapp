@@ -95,54 +95,74 @@ const App = ({ token, user }) => {
     };
   }, [currentSong]);
 
-  // Fetch songs from backend
+  // Fetch songs from backend (use cache for instant UI)
   const fetchSongs = async () => {
     if (!token) return;
+    // try cached playlist first
+    const cached = sessionStorage.getItem('comp_playlist_v1');
+    if (cached) {
+      try {
+        const list = JSON.parse(cached);
+        setPlaylist(list);
+      } catch (e) { /* ignore */ }
+    }
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/songs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!res.ok) throw new Error('Failed to fetch songs');
       const songs = await res.json();
       if (!Array.isArray(songs)) {
         setPlaylist([]);
         return;
       }
-      setPlaylist(songs.map(song => ({
+      const mapped = songs.map(song => ({
         id: song._id,
         title: song.title,
         artist: song.artist,
         album: song.album,
         duration: song.duration,
         url: `${BACKEND_URL}/api/songs/${song._id}/stream`
-      })));
+      }));
+      setPlaylist(mapped);
+      try { sessionStorage.setItem('comp_playlist_v1', JSON.stringify(mapped)); } catch (e) {}
     } catch (err) {
       console.error("Failed to fetch songs", err);
-      setPlaylist([]);
+      // keep cached playlist if available
     }
   };
 
-  // Fetch favorites from backend
+  // Fetch favorites (with cache)
   const fetchFavorites = async () => {
     if (!token) return;
+    const cachedFavs = sessionStorage.getItem('comp_favs_v1');
+    if (cachedFavs) {
+      try { setFavoritesList(JSON.parse(cachedFavs)); } catch (e) {}
+    }
     try {
       const res = await fetch(`${BACKEND_URL}/api/favorites`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!res.ok) throw new Error('Failed to fetch favorites');
       const favs = await res.json();
       if (!Array.isArray(favs)) {
         setFavoritesList([]);
         return;
       }
-      setFavoritesList(favs.map(fav => ({
+      const mapped = favs.map(fav => ({
         id: fav.song._id,
         title: fav.song.title,
         artist: fav.song.artist,
         album: fav.song.album,
         duration: fav.song.duration,
         url: `${BACKEND_URL}/api/songs/${fav.song._id}/stream`
-      })));
+      }));
+      setFavoritesList(mapped);
+      try { sessionStorage.setItem('comp_favs_v1', JSON.stringify(mapped)); } catch (e) {}
     } catch (err) {
-      setFavoritesList([]);
+      console.error("Failed to fetch favorites", err);
+      // keep cached favorites if present
     }
   };
 

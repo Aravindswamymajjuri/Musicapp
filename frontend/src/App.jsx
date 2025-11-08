@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Music from './components/music';
 import Auth from './components/Auth';
 import './App.css';
+import './index.css';
 import Login from './music/login';
 import Signup from './music/signup';
 import SongManager from './music/songmanager';
