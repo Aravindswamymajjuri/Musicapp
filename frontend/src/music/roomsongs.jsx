@@ -35,6 +35,9 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
 
+  // Reconnection overlay state
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
   // allow guests to enable playback (user gesture) so audio.play() won't be blocked
   const [playbackEnabled, setPlaybackEnabled] = useState(false);
 
@@ -44,47 +47,189 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const socketRef = useRef(null);
   const initialLoad = useRef(true);
 
-  // Helper: emit host playback to room immediately
-  const emitHostPlayback = (overridePlayback) => {
-    if (!socketRef.current || !isHost) return;
+  // On mount: load cached room/songs immediately, then refresh in background
+  useEffect(() => {
+    // Load cached data for instant display
     try {
-      const payload = overridePlayback || {
-        currentSongId: currentSong?._id || null,
-        currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
-        currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-        isPlaying,
-        queue: queue.map(s => s._id || s),
-      };
-      socketRef.current.emit('hostPlayback', { roomCode, playback: payload });
-    } catch (e) {
-      // ignore emit errors
-    }
-  };
+      const cachedRoom = sessionStorage.getItem(`room_${roomCode}`);
+      const cachedSongs = sessionStorage.getItem('rs_songs_v1');
+      const savedPosition = sessionStorage.getItem(`room_${roomCode}_position`);
+      if (cachedRoom) {
+        const parsed = JSON.parse(cachedRoom);
+        setRoom(parsed);
+        setUsers(parsed.users || []);
+        setIsHost(!!(parsed.host && parsed.host._id === userId));
+        setCurrentSong(parsed.currentSong || null);
+        // Restore saved position if available (more recent than cached room)
+        const savedTime = savedPosition ? parseFloat(savedPosition) : null;
+        setCurrentTime(savedTime !== null ? savedTime : (parsed.currentTime || 0));
+        setIsPlaying(parsed.isPlaying || false);
+        setQueue(parsed.queue || []);
+        setLoadingRoom(false);
+        initialLoad.current = false;
+      }
+      if (cachedSongs) setAllSongs(JSON.parse(cachedSongs));
+    } catch (e) {}
+  }, [roomCode, userId]);
 
-  // persist playback state to server immediately
-  const persistPlayback = async (payload) => {
-    try {
-      await fetch(`${API_ROOMS}/${roomCode}/playback`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (e) {
-      console.error('persistPlayback failed', e);
-    }
-  };
+  // Persist audio position every 2 seconds (for resume on refresh)
+  useEffect(() => {
+    if (!currentSong || !audioRef.current) return;
+    const interval = setInterval(() => {
+      try {
+        const pos = audioRef.current.currentTime;
+        if (pos > 0) {
+          sessionStorage.setItem(`room_${roomCode}_position`, pos.toString());
+        }
+      } catch (e) {}
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [currentSong, roomCode]);
+
+  // Fetch room info on mount & poll (avoid loading flicker on every poll)
+  useEffect(() => {
+	let mounted = true;
+	let backoff = 2000; // initial delay 2s
+	const MAX_BACKOFF = 60000; // cap 1 minute
+	let timer = null;
+
+	const schedule = (delay) => {
+		if (!mounted) return;
+		timer = setTimeout(runFetchRoom, delay);
+	};
+
+	const runFetchRoom = async () => {
+		if (!mounted) return;
+
+		// If offline, increase backoff and reschedule
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			console.warn('Offline - skipping room fetch');
+			backoff = Math.min(MAX_BACKOFF, backoff * 2);
+			schedule(backoff);
+			return;
+		}
+
+		if (initialLoad.current) setLoadingRoom(true);
+		setError('');
+		try {
+			const res = await fetch(`${API_ROOMS}/${roomCode}`, {
+				headers: token ? { Authorization: `Bearer ${token}` } : {},
+			});
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.error || `Room fetch failed: ${res.status}`);
+			}
+			const data = await res.json();
+
+			// Cache room data for instant reload
+			try { sessionStorage.setItem(`room_${roomCode}`, JSON.stringify(data)); } catch (e) {}
+
+			// Apply server playback conservatively (unchanged logic)
+			const applyServerPlayback = (server) => {
+				// update static room/users info (safe)
+				setRoom(server);
+				setUsers(server.users || []);
+				setIsHost(!!(server.host && server.host._id === userId));
+
+				// If this client is host, don't override host playback/queue
+				if (server.host && server.host._id === userId) return;
+
+				const serverSongId = server.currentSong?._id || server.currentSongId || null;
+				const localSongId = currentSong?._id || null;
+				if (serverSongId !== localSongId) {
+					if (serverSongId) {
+						const found = allSongs.find(s => s._id === serverSongId);
+						setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
+					} else {
+						setCurrentSong(null);
+					}
+				}
+
+				const serverTime = typeof server.currentTime === 'number' ? server.currentTime : 0;
+				if (audioRef.current) {
+					const audioTime = audioRef.current.currentTime || 0;
+					if (Math.abs(audioTime - serverTime) > 1) {
+						try { audioRef.current.currentTime = serverTime; } catch (e) {}
+						setCurrentTime(serverTime);
+					}
+				} else {
+					setCurrentTime(serverTime);
+				}
+
+				if (typeof server.isPlaying === 'boolean' && server.isPlaying !== isPlaying) {
+					setIsPlaying(server.isPlaying);
+				}
+
+				if (Array.isArray(server.queue)) {
+					const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
+					const localQueueIds = queue.map(q => q._id || q);
+					if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
+						const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
+						setQueue(mapped);
+					}
+				}
+			};
+
+			applyServerPlayback(data);
+
+			// success -> reset backoff for next poll
+			backoff = isHost ? 5000 : 2000;
+		} catch (err) {
+			console.warn('fetchRoom error:', err);
+			// Surface user-friendly message (keeps UI recoverable)
+			setError(err.message || 'Failed to load room');
+			// increase backoff to avoid noisy retries
+			backoff = Math.min(MAX_BACKOFF, backoff * 2);
+		} finally {
+			if (initialLoad.current) {
+				setLoadingRoom(false);
+				initialLoad.current = false;
+			}
+			// schedule next poll according to role/backoff
+			schedule(backoff);
+		}
+	};
+
+	// start immediately
+	schedule(0);
+
+	return () => {
+		mounted = false;
+		if (timer) clearTimeout(timer);
+	};
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [roomCode, token, userId, isHost, queue, currentSong, isPlaying, allSongs]);
 
   // Socket: join room and listen for host playback
   useEffect(() => {
     socketRef.current = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+    // Optimize reconnection: prefer websocket, reduce timeout
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 2000,
+      timeout: 5000,
+    });
+
     socketRef.current.on('connect', () => {
+      setIsReconnecting(false);
+      socketRef.current.emit('joinRoom', roomCode);
+      // register this client's userId with the server so host can target this user
+      if (userId) socketRef.current.emit('registerUser', userId);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setIsReconnecting(true);
+    });
+
+    socketRef.current.on('reconnect', () => {
+      setIsReconnecting(false);
+      // Re-join room after reconnect
       socketRef.current.emit('joinRoom', roomCode);
       if (userId) socketRef.current.emit('registerUser', userId);
     });
 
+    // Server can force this client to leave the room (host kicked)
     socketRef.current.on('forceLeave', (data) => {
       const { roomCode: kickedFrom } = data || {};
       if (kickedFrom && kickedFrom !== roomCode) return;
@@ -118,109 +263,9 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         socketRef.current.disconnect();
       }
     };
+    // include deps that affect behavior
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isHost, allSongs, userId, onLeaveRoom]);
-
-  // Fetch room info on mount & poll
-  useEffect(() => {
-    let mounted = true;
-    let backoff = 2000;
-    const MAX_BACKOFF = 60000;
-    let timer = null;
-
-    const schedule = (delay) => {
-      if (!mounted) return;
-      timer = setTimeout(runFetchRoom, delay);
-    };
-
-    const runFetchRoom = async () => {
-      if (!mounted) return;
-
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        console.warn('Offline - skipping room fetch');
-        backoff = Math.min(MAX_BACKOFF, backoff * 2);
-        schedule(backoff);
-        return;
-      }
-
-      if (initialLoad.current) setLoadingRoom(true);
-      setError('');
-      try {
-        const res = await fetch(`${API_ROOMS}/${roomCode}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Room fetch failed: ${res.status}`);
-        }
-        const data = await res.json();
-
-        const applyServerPlayback = (server) => {
-          setRoom(server);
-          setUsers(server.users || []);
-          setIsHost(!!(server.host && server.host._id === userId));
-
-          if (server.host && server.host._id === userId) return;
-
-          const serverSongId = server.currentSong?._id || server.currentSongId || null;
-          const localSongId = currentSong?._id || null;
-          if (serverSongId !== localSongId) {
-            if (serverSongId) {
-              const found = allSongs.find(s => s._id === serverSongId);
-              setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
-            } else {
-              setCurrentSong(null);
-            }
-          }
-
-          const serverTime = typeof server.currentTime === 'number' ? server.currentTime : 0;
-          if (audioRef.current) {
-            const audioTime = audioRef.current.currentTime || 0;
-            if (Math.abs(audioTime - serverTime) > 1) {
-              try { audioRef.current.currentTime = serverTime; } catch (e) {}
-              setCurrentTime(serverTime);
-            }
-          } else {
-            setCurrentTime(serverTime);
-          }
-
-          if (typeof server.isPlaying === 'boolean' && server.isPlaying !== isPlaying) {
-            setIsPlaying(server.isPlaying);
-          }
-
-          if (Array.isArray(server.queue)) {
-            const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
-            const localQueueIds = queue.map(q => q._id || q);
-            if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
-              const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
-              setQueue(mapped);
-            }
-          }
-        };
-
-        applyServerPlayback(data);
-        backoff = isHost ? 5000 : 2000;
-      } catch (err) {
-        console.warn('fetchRoom error:', err);
-        setError(err.message || 'Failed to load room');
-        backoff = Math.min(MAX_BACKOFF, backoff * 2);
-      } finally {
-        if (initialLoad.current) {
-          setLoadingRoom(false);
-          initialLoad.current = false;
-        }
-        schedule(backoff);
-      }
-    };
-
-    schedule(0);
-
-    return () => {
-      mounted = false;
-      if (timer) clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, userId, isHost, queue, currentSong, isPlaying, allSongs]);
 
   // Load cached songs and refresh
   useEffect(() => {
@@ -329,25 +374,38 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, currentSong, isPlaying, queue, room, roomCode, token]);
 
-  // Guests sync their audio player
+  // Guests sync their audio player to host playback state
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (isHost) return;
+    if (isHost) return; // host controls local player
 
     if (!currentSong) {
       audio.pause();
       try { audio.removeAttribute('src'); audio.load(); setCurrentDuration(0); } catch (e) {}
+      // Clear saved position when no song
+      try { sessionStorage.removeItem(`room_${roomCode}_position`); } catch (e) {}
       return;
     }
 
     const streamUrl = `${API_SONGS}/${currentSong._id}/stream`;
+
+    // set crossOrigin and preload so metadata and range requests work reliably
     audio.crossOrigin = 'anonymous';
     audio.preload = 'metadata';
 
+    // compare by id to avoid absolute/relative URL differences
     const srcIncludesId = audio.src && String(audio.src).includes(currentSong._id);
     if (!srcIncludesId) {
+      // Check if we have a saved position for resume
+      const savedPos = sessionStorage.getItem(`room_${roomCode}_position`);
+      const resumeTime = savedPos ? parseFloat(savedPos) : currentTime;
+      // ensure audio element can load even if controls hidden
+      audio.style.width = '100%';
+      audio.style.height = '1px';
+      // delegate src/load/play handling to helper to avoid race conditions
       applyAudioSrc(streamUrl, isPlaying && playbackEnabled);
+      applyAudioSrc(streamUrl, isPlaying && playbackEnabled, resumeTime);
       return;
     }
 
@@ -633,13 +691,10 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 		} catch (e) {}
 	};
 
-  // Helper to set audio src
-  function applyAudioSrc(url, shouldPlay = false) {
+  // Helper to set audio src and play only after canplay to avoid races/AbortError
+  function applyAudioSrc(url, shouldPlay = false, startTime = 0) {
     const audio = audioRef.current;
     if (!audio) return;
-
-    // NEW: warm the connection / request early bytes
-    try { prefetchAudio(url); } catch (e) {}
 
     // clear when no url requested
     if (!url) {
@@ -652,11 +707,13 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       return;
     }
 
+    // if same source (or contains same identifier), just toggle play/pause
     try {
-      // ensure audio element is set for streaming
-      audio.crossOrigin = 'anonymous';
-      audio.preload = 'auto';
       if (audio.src && String(audio.src).includes(url)) {
+        // If resuming, seek to saved position
+        if (startTime > 0 && Math.abs(audio.currentTime - startTime) > 2) {
+          try { audio.currentTime = startTime; } catch (e) {}
+        }
         if (shouldPlay) audio.play().catch(() => {});
         else audio.pause();
         return;
@@ -671,10 +728,15 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
     audioPendingRef.current.src = url;
     const onCanPlay = () => {
+      // ensure this listener corresponds to the current pending src
       if (!audioPendingRef.current.src || !(String(audio.src).includes(audioPendingRef.current.src))) {
         try { audio.removeEventListener('canplay', onCanPlay); } catch (e) {}
         audioPendingRef.current.listener = null;
         return;
+      }
+      // Seek to resume position before playing
+      if (startTime > 0) {
+        try { audio.currentTime = startTime; } catch (e) {}
       }
       if (shouldPlay) audio.play().catch(() => {});
       try { audio.removeEventListener('canplay', onCanPlay); } catch (e) {}
@@ -801,6 +863,30 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
   return (
     <div className="room">
+      {/* Reconnection overlay */}
+      {isReconnecting && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          color: '#fff',
+          fontSize: 18,
+          fontWeight: 'bold'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ marginBottom: 12 }}>🔄 Reconnecting...</div>
+            <div style={{ fontSize: 14, opacity: 0.8 }}>Please wait while we restore your connection</div>
+          </div>
+        </div>
+      )}
+
       <h2>Room: {room?.name || roomCode}</h2>
       <div className="room-info">
         <div>Host: {room?.host?.username || room?.host?.name || room?.host?.email || 'Unknown'}</div>
