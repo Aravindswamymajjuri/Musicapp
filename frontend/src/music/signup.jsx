@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
 const Signup = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -13,7 +15,7 @@ const Signup = () => {
     setError('');
 
     try {
-      const response = await fetch('https://musicapp-7dy9.onrender.com/api/auth/register', {
+      const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,6 +299,7 @@ const Signup = () => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Choose a username"
+                autoComplete="username"
                 required
                 onKeyPress={(e) => e.key === 'Enter' && handleSignup(e)}
               />
@@ -310,6 +313,7 @@ const Signup = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
+                autoComplete="email"
                 required
                 onKeyPress={(e) => e.key === 'Enter' && handleSignup(e)}
               />
@@ -323,6 +327,7 @@ const Signup = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a strong password"
+                autoComplete="new-password"
                 required
                 onKeyPress={(e) => e.key === 'Enter' && handleSignup(e)}
               />

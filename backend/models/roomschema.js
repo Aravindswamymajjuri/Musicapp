@@ -12,7 +12,10 @@ const roomSchema = new mongoose.Schema({
   queue: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Song' }], // list of song IDs
   users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   createdAt: { type: Date, default: Date.now },
-  theme: { type: String, default: 'default' }
+  theme: { type: String, default: 'default' },
+  // Sync fields for real-time audio sync
+  syncTimestamp: { type: Number, default: 0 }, // Server timestamp (ms) when playback was updated
+  lastSyncAt: { type: Date, default: Date.now } // Timestamp of last sync update
 });
 
 module.exports = mongoose.model('Room', roomSchema);

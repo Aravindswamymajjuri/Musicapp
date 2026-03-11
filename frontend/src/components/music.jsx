@@ -4,8 +4,7 @@ import { io } from 'socket.io-client';
 import { Play, Pause, SkipForward, SkipBack, Shuffle, Repeat, Volume2, Users, Settings, Upload, Music, Heart, Clock, Moon, Sun } from 'lucide-react';
 import '../components/music.css'; // Assuming you have a CSS file for styling
 
-const BACKEND_URL = 'https://musicapp-7dy9.onrender.com';
-// const BACKEND_URL = 'http://localhost:3001'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 const App = ({ token, user }) => {
   const [currentSong, setCurrentSong] = useState(null);
@@ -43,8 +42,7 @@ const App = ({ token, user }) => {
 
   // Initialize socket connection
   useEffect(() => {
-    socketRef.current = io('https://musicapp-7dy9.onrender.com');
-    // socketRef.current = io('http://localhost:3001')
+    socketRef.current = io(BACKEND_URL);
     
     socketRef.current.on('room-joined', (data) => {
       setRoom(data.room);

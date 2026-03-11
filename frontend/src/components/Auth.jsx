@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const BACKEND_URL = 'https://musicapp-7dy9.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 const Auth = ({ onAuth }) => {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
@@ -45,6 +45,7 @@ const Auth = ({ onAuth }) => {
             placeholder="Username"
             value={username}
             required
+            autoComplete="username"
             onChange={e => setUsername(e.target.value)}
           />
         )}
@@ -53,6 +54,7 @@ const Auth = ({ onAuth }) => {
           placeholder="Email"
           value={email}
           required
+          autoComplete="email"
           onChange={e => setEmail(e.target.value)}
         />
         <input
@@ -60,6 +62,7 @@ const Auth = ({ onAuth }) => {
           placeholder="Password"
           value={password}
           required
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           onChange={e => setPassword(e.target.value)}
         />
         <button type="submit">{mode === 'login' ? 'Login' : 'Sign Up'}</button>

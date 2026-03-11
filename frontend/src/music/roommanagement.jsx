@@ -5,6 +5,9 @@ import './roomsongs.css';
 
 const ROOM_STORAGE_KEY = 'joinedRoomCode';
 
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
+const API_ROOMS = `${API_BASE_URL}/api/rooms`;
+
 const getUserIdFromToken = (token) => {
   // Try to decode JWT payload safely in the browser to extract common id fields.
   if (!token) return null;
@@ -22,6 +25,13 @@ const getUserIdFromToken = (token) => {
 
 const Roommanagement = () => {
   const [joinedRoomCode, setJoinedRoomCode] = useState(() => {
+    // Only load saved room if user is still logged in
+    const token = localStorage.getItem('token');
+    if (!token) {
+      // User logged out - clear the saved room
+      localStorage.removeItem(ROOM_STORAGE_KEY);
+      return null;
+    }
     return localStorage.getItem(ROOM_STORAGE_KEY) || null;
   });
   
@@ -44,7 +54,28 @@ const Roommanagement = () => {
     setJoinedRoomCode(code);
   };
 
-  const handleLeaveRoom = () => {
+  const handleLeaveRoom = async () => {
+    if (!joinedRoomCode) return;
+    
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_ROOMS}/${joinedRoomCode}/leave`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.warn('Leave room error:', data.error);
+      }
+    } catch (err) {
+      console.warn('Failed to notify server of room leave:', err);
+    }
+    
+    // Clear the room locally regardless of server response
     setJoinedRoomCode(null);
   };
 

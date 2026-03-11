@@ -72,40 +72,7 @@ router.post('/:code/join', authenticateToken, async (req, res) => {
     }
 
     // Check if user already joined
-    if (room.users.some(id => id.toString() === userId)) {
-      return res.status(400).json({ error: 'User already in the room' });
-    }
-
-    // Add user to room
-    room.users.push(userId);
-    await room.save();
-
-    // Populate the users info for response
-    await room.populate('users', 'username email');
-
-    res.json({ message: 'Joined room successfully', users: room.users });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-router.post('/:code/join', authenticateToken, async (req, res) => {
-  try {
-    const { code } = req.params;
-    const userId = req.user.id;
-    const { password } = req.body; // Password for private rooms (optional)
-
-    const room = await Room.findOne({ code });
-    if (!room) return res.status(404).json({ error: 'Room not found' });
-
-    // If private, verify password
-    if (room.isPrivate) {
-      if (!password || password !== room.password) {
-        return res.status(401).json({ error: 'Invalid or missing room password' });
-      }
-    }
-
-    // Check if user already joined
-    if (room.users.some(id => id.toString() === userId)) {
+    if (room.users.some(id => id.toString() === userId.toString())) {
       return res.status(400).json({ error: 'User already in the room' });
     }
 
@@ -129,12 +96,12 @@ router.post('/:code/leave', authenticateToken, async (req, res) => {
     const room = await Room.findOne({ code });
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
-    if (!room.users.some(id => id.toString() === userId)) {
+    if (!room.users.some(id => id.toString() === userId.toString())) {
       return res.status(400).json({ error: 'User not in the room' });
     }
 
     // Remove user from users array
-    room.users = room.users.filter(id => id.toString() !== userId);
+    room.users = room.users.filter(id => id.toString() !== userId.toString());
 
     // If the user is the host, assign new host if users remain
     if (room.host.toString() === userId) {
@@ -168,34 +135,139 @@ router.put('/:code/playback', authenticateToken, async (req, res) => {
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     // Optional: Only host can update playback
-    if (room.host.toString() !== userId) {
+    if (room.host.toString() !== userId.toString()) {
       return res.status(403).json({ error: 'Only host can update playback' });
     }
 
     // Validate currentSongId if provided
     if (currentSongId) {
-      const songExists = await Song.findById(currentSongId);
-      if (!songExists) {
-        return res.status(400).json({ error: 'Invalid currentSongId' });
+      try {
+        const songExists = await Song.findById(currentSongId);
+        if (songExists) {
+          room.currentSong = currentSongId;
+        }
+      } catch (e) {
+        console.warn('Song validation error:', e.message);
+        // Continue even if song doesn't exist - might be deleted
       }
-      room.currentSong = currentSongId;
+    } else {
+      room.currentSong = null;
     }
 
-    if (typeof currentTime === 'number') room.currentTime = currentTime;
+    if (typeof currentTime === 'number') room.currentTime = Math.max(0, currentTime);
     if (typeof isPlaying === 'boolean') room.isPlaying = isPlaying;
-    if (Array.isArray(queue)) room.queue = queue; // Array of Song ObjectIds
+    if (Array.isArray(queue)) {
+      // Convert queue items to valid ObjectIds if they're strings
+      room.queue = queue.filter(q => q).map(q => {
+        const id = typeof q === 'string' ? q : (q._id || q);
+        try {
+          return id;
+        } catch (e) {
+          return null;
+        }
+      }).filter(q => q);
+    }
+
+    // Add server-side timestamp for real-time sync
+    room.syncTimestamp = Date.now();
+    room.lastSyncAt = new Date();
+
+    await room.save();
+
+    // Build response with room data and sync info
+    const response = {
+      _id: room._id,
+      code: room.code,
+      name: room.name,
+      host: room.host,
+      isPrivate: room.isPrivate,
+      currentSong: room.currentSong,
+      currentTime: room.currentTime,
+      isPlaying: room.isPlaying,
+      queue: room.queue,
+      users: room.users,
+      createdAt: room.createdAt,
+      theme: room.theme,
+      syncTimestamp: room.syncTimestamp,
+      serverTime: Date.now(),
+    };
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// Update room details (name, theme, etc.)
+router.put('/:code', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.params;
+    const userId = req.user.id;
+    const { name, theme } = req.body;
+
+    const room = await Room.findOne({ code });
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+
+    // Only host can update room details
+    if (room.host.toString() !== userId.toString()) {
+      return res.status(403).json({ error: 'Only host can update room details' });
+    }
+
+    if (typeof name === 'string') room.name = name;
+    if (typeof theme === 'string') room.theme = theme;
 
     await room.save();
 
     const updatedRoom = await Room.findById(room._id)
-      .populate('currentSong')
-      .populate('users', 'username email');
+      .populate('host', 'username email')
+      .populate('users', 'username email')
+      .populate('currentSong');
 
     res.json(updatedRoom);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Remove a user from the room
+router.delete('/:code/users', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.params;
+    const userId = req.user.id;
+    const { userId: userIdToRemove } = req.body;
+
+    if (!userIdToRemove) {
+      return res.status(400).json({ error: 'userId required in request body' });
+    }
+
+    const room = await Room.findOne({ code });
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+
+    // Only host can remove users
+    if (room.host.toString() !== userId) {
+      return res.status(403).json({ error: 'Only host can remove users' });
+    }
+
+    // Cannot remove yourself
+    if (userIdToRemove === userId) {
+      return res.status(400).json({ error: 'Cannot remove yourself, use leave endpoint' });
+    }
+
+    if (!room.users.some(id => id.toString() === userIdToRemove)) {
+      return res.status(400).json({ error: 'User not in the room' });
+    }
+
+    room.users = room.users.filter(id => id.toString() !== userIdToRemove);
+    await room.save();
+
+    await room.populate('users', 'username email');
+
+    res.json({ message: 'User removed from the room', users: room.users });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete room (only host)
 router.delete('/:code', authenticateToken, async (req, res) => {
   try {
     const { code } = req.params;
@@ -205,7 +277,7 @@ router.delete('/:code', authenticateToken, async (req, res) => {
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     // Only host can delete the room
-    if (room.host.toString() !== userId) {
+    if (room.host.toString() !== userId.toString()) {
       return res.status(403).json({ error: 'Only host can delete the room' });
     }
 
