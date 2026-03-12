@@ -6,6 +6,36 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 
+// --------------- LRU Buffer Cache ---------------
+// Avoids re-decoding base64 from MongoDB on every range request.
+// Keeps up to ~200 MB of decoded audio in memory (auto-evicts oldest).
+const CACHE_MAX = 200 * 1024 * 1024; // 200 MB
+const bufferCache = new Map();       // songId -> { buffer, contentType, size, lastUsed }
+let cacheCurrentSize = 0;
+
+function cacheGet(songId) {
+  const entry = bufferCache.get(songId);
+  if (entry) { entry.lastUsed = Date.now(); }
+  return entry || null;
+}
+
+function cachePut(songId, buffer, contentType) {
+  // evict oldest entries until we have room
+  while (cacheCurrentSize + buffer.length > CACHE_MAX && bufferCache.size > 0) {
+    let oldestKey = null, oldestTime = Infinity;
+    for (const [k, v] of bufferCache) {
+      if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldestKey = k; }
+    }
+    if (oldestKey) {
+      cacheCurrentSize -= bufferCache.get(oldestKey).size;
+      bufferCache.delete(oldestKey);
+    }
+  }
+  bufferCache.set(songId, { buffer, contentType, size: buffer.length, lastUsed: Date.now() });
+  cacheCurrentSize += buffer.length;
+}
+// ------------------------------------------------
+
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
 
@@ -188,6 +218,12 @@ router.get('/:id/stream', async (req, res) => {
   }
 
   try {
+    // ---------- Try in-memory cache first (avoid MongoDB + base64 decode) ----------
+    const cached = cacheGet(songId);
+    if (cached) {
+      return serveBuffer(req, res, cached.buffer, cached.contentType, songId);
+    }
+
     // Select the embedded fileData (if present) and minimal metadata
     const song = await Song.findById(songId).select('fileData filePath metadata originalName fileSize uploadedBy');
     if (!song) {
@@ -196,42 +232,29 @@ router.get('/:id/stream', async (req, res) => {
 
     // If file data is embedded as base64, stream from buffer (support Range)
     if (song.fileData?.data) {
-      const contentType = song.fileData.contentType || song.metadata?.format || 'audio/mpeg';
-      const fileBuffer = Buffer.from(song.fileData.data, 'base64');
-      const total = fileBuffer.length;
-      const range = req.headers.range;
-
-      // Ensure CORS headers are present on streaming responses
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
-      res.setHeader('Accept-Ranges', 'bytes');
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-
-        if (isNaN(start) || isNaN(end) || start > end || start >= total) {
-          res.set('Content-Range', `bytes */${total}`);
-          return res.status(416).end();
-        }
-
-        const chunk = fileBuffer.slice(start, end + 1);
-        res.status(206).set({
-          'Content-Range': `bytes ${start}-${end}/${total}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunk.length,
-          'Content-Type': contentType
-        });
-        return res.end(chunk);
-      } else {
-        res.status(200).set({
-          'Content-Length': total,
-          'Content-Type': contentType,
-          'Accept-Ranges': 'bytes'
-        });
-        return res.end(fileBuffer);
+      // Map file format to proper audio MIME type
+      const formatMap = {
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'm4a': 'audio/mp4',
+        'aac': 'audio/aac',
+        'flac': 'audio/flac',
+        'ogg': 'audio/ogg',
+        'webm': 'audio/webm'
+      };
+      
+      let contentType = song.fileData.contentType;
+      if (!contentType) {
+        const format = (song.metadata?.format || '').toLowerCase().trim();
+        contentType = formatMap[format] || 'audio/mpeg'; // Default to mp3
       }
+      
+      const fileBuffer = Buffer.from(song.fileData.data, 'base64');
+
+      // Store in cache so next range request won't hit MongoDB
+      cachePut(songId, fileBuffer, contentType);
+
+      return serveBuffer(req, res, fileBuffer, contentType, songId);
     }
 
     // Fallback: if you store files on disk/path, stream from filesystem
@@ -241,6 +264,7 @@ router.get('/:id/stream', async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
       res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       const fs = require('fs');
       if (!fs.existsSync(filePath)) {
         console.error('Stream error: filePath exists in record but not on disk', filePath);
@@ -249,7 +273,23 @@ router.get('/:id/stream', async (req, res) => {
       const stat = fs.statSync(filePath);
       const total = stat.size;
       const range = req.headers.range;
-      const contentType = song.fileData?.contentType || 'audio/mpeg';
+      
+      // Map file format to proper audio MIME type
+      const formatMap = {
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'm4a': 'audio/mp4',
+        'aac': 'audio/aac',
+        'flac': 'audio/flac',
+        'ogg': 'audio/ogg',
+        'webm': 'audio/webm'
+      };
+      
+      let contentType = song.fileData?.contentType;
+      if (!contentType) {
+        const ext = path.extname(filePath).substring(1).toLowerCase();
+        contentType = formatMap[ext] || 'audio/mpeg';
+      }
 
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');
@@ -283,6 +323,53 @@ router.get('/:id/stream', async (req, res) => {
     return res.status(500).json({ error: 'Internal Server Error while streaming audio' });
   }
 });
+
+// Shared helper: serve a Buffer with Range support + caching headers
+function serveBuffer(req, res, fileBuffer, contentType, songId) {
+  const total = fileBuffer.length;
+  const range = req.headers.range;
+
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+  res.setHeader('Accept-Ranges', 'bytes');
+  // Allow browser to cache audio for 1 day (audio files are immutable)
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.setHeader('ETag', `"${songId}"`);
+
+  // Handle conditional request (304 Not Modified)
+  const ifNoneMatch = req.headers['if-none-match'];
+  if (ifNoneMatch === `"${songId}"`) {
+    return res.status(304).end();
+  }
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+
+    if (isNaN(start) || isNaN(end) || start > end || start >= total) {
+      res.set('Content-Range', `bytes */${total}`);
+      return res.status(416).end();
+    }
+
+    const chunk = fileBuffer.slice(start, end + 1);
+    res.status(206).set({
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunk.length,
+      'Content-Type': contentType
+    });
+    return res.end(chunk);
+  } else {
+    res.status(200).set({
+      'Content-Length': total,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes'
+    });
+    return res.end(fileBuffer);
+  }
+}
 
 // Delete a song by ID
 router.delete('/:id', authenticateToken, async (req, res) => {

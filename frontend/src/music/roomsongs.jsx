@@ -173,18 +173,13 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 					const audioTime = audioRef.current.currentTime || 0;
 					const drift = Math.abs(audioTime - targetTime);
 					
-					// Aggressive sync: correct if drift > 0.5 seconds
-					if (drift > 0.5) {
+					// Only correct MAJOR drift (> 1 second) to avoid constant seeking that breaks audio
+					// Small drifts don't affect user experience and cause audio pops/clicks
+					if (drift > 1.0) {
 						try { 
 							audioRef.current.currentTime = targetTime;
 							setCurrentTime(targetTime);
 							lastGuestSyncRef.current = now;
-						} catch (e) {}
-					} else if (drift > 0.2) {
-						// Gentle correction: small drift
-						try { 
-							audioRef.current.currentTime = targetTime;
-							setCurrentTime(targetTime);
 						} catch (e) {}
 					}
 				} else {
@@ -309,13 +304,13 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         targetTime = expectedTime + timeSinceSyncSec;
       }
 
-      // Sync audio if loaded
+      // Sync audio if loaded - only correct MAJOR drift to avoid breaking audio
       if (audioRef.current && audioRef.current.src) {
         const audioTime = audioRef.current.currentTime || 0;
         const drift = Math.abs(audioTime - targetTime);
         
-        // Aggressive sync: correct if drift > 0.3 seconds
-        if (drift > 0.3) {
+        // Only sync if drift is significant (> 1 second) to avoid constant seeking that breaks audio
+        if (drift > 1.0) {
           try { 
             audioRef.current.currentTime = targetTime;
             setCurrentTime(targetTime);
@@ -324,7 +319,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         }
       }
 
-      setCurrentTime(targetTime);
       if (typeof playback.isPlaying === 'boolean') setIsPlaying(playback.isPlaying);
       if (Array.isArray(playback.queue)) {
         const newQ = playback.queue.map(q => (typeof q === 'string' ? (allSongsRef.current.find(s => s._id === q) || { _id: q }) : q));
@@ -489,7 +483,6 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       audio.style.width = '100%';
       audio.style.height = '1px';
       // delegate src/load/play handling to helper to avoid race conditions
-      applyAudioSrc(streamUrl, isPlaying && playbackEnabled);
       applyAudioSrc(streamUrl, isPlaying && playbackEnabled, resumeTime);
       return;
     }
@@ -513,9 +506,9 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     } else {
       trySyncTime();
     }
-  }, [currentSong, currentTime, isPlaying, isHost, playbackEnabled]);
+  }, [currentSong, isPlaying, isHost, playbackEnabled]);
 
-  // Guest continuous sync correction - keep correcting drift every 100ms
+  // Guest continuous sync correction - keep correcting drift but less aggressively
   useEffect(() => {
     if (isHost) return;
     if (!audioRef.current) return;
@@ -541,14 +534,15 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       const audioTime = audio.currentTime || 0;
       const drift = Math.abs(audioTime - targetTime);
       
-      // Auto-correct significant drift (> 0.2 seconds)
-      if (drift > 0.2) {
+      // Only correct SIGNIFICANT drift (> 1 second) to avoid constant seeking that breaks audio
+      // Smaller drifts are tolerable and won't be noticeable to users
+      if (drift > 1.0) {
         try {
           audio.currentTime = targetTime;
           setCurrentTime(targetTime);
         } catch (e) {}
       }
-    }, 100); // Check every 100ms for better sync
+    }, 2000); // Check every 2 seconds instead of 100ms to reduce seeking interruptions
     
     return () => {
       mounted = false;
@@ -587,7 +581,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     } else {
       audioRef.current.pause();
     }
-  }, [isHost, currentSong, currentTime, isPlaying]);
+  }, [isHost, currentSong, isPlaying]);
 
   // Helper: emit playback state via socket
   const emitHostPlayback = (payload) => {
@@ -899,7 +893,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
     audioPendingRef.current.listener = onCanPlay;
     audio.crossOrigin = 'anonymous';
-    audio.preload = 'auto';
+    audio.preload = 'none';
     try {
       audio.removeAttribute('src');
       audio.src = url;
@@ -1235,7 +1229,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
       <audio
         ref={audioRef}
-        preload="metadata"
+        preload="none"
         crossOrigin="anonymous"
         onTimeUpdate={onTimeUpdate}
         onEnded={handleEnded}

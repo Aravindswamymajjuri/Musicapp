@@ -382,14 +382,7 @@ const SongManager = () => {
 			document.head.appendChild(pc);
 			setTimeout(() => { try { document.head.removeChild(pc); } catch (e) {} }, 30000);
 		} catch (e) {}
-		try {
-			const pl = document.createElement('link');
-			pl.rel = 'preload';
-			pl.as = 'audio';
-			pl.href = url;
-			document.head.appendChild(pl);
-			setTimeout(() => { try { document.head.removeChild(pl); } catch (e) {} }, 30000);
-		} catch (e) {}
+		// Note: avoid <link rel="preload" as="audio"> - not standard and causes browser warnings
 	};
 
 	// NEW: authenticated Range probe to warm connection
@@ -429,6 +422,12 @@ const SongManager = () => {
 		};
 		const onPlay = () => setIsPlaying(true);
 		const onPause = () => setIsPlaying(false);
+		const onError = () => {
+			console.error('Audio error:', audio.error?.code, audio.error?.message);
+			setIsBuffering(false);
+			setIsPlaying(false);
+			if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
+		};
 
 		// attach listeners
 		audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -436,11 +435,13 @@ const SongManager = () => {
 		audio.removeEventListener('loadedmetadata', onLoadedMeta);
 		audio.removeEventListener('play', onPlay);
 		audio.removeEventListener('pause', onPause);
+		audio.removeEventListener('error', onError);
 		audio.addEventListener('timeupdate', onTimeUpdate);
 		audio.addEventListener('progress', onProgress);
 		audio.addEventListener('loadedmetadata', onLoadedMeta);
 		audio.addEventListener('play', onPlay);
 		audio.addEventListener('pause', onPause);
+		audio.addEventListener('error', onError);
 
 		if (!audioSrc) {
 			// stop and clear source
@@ -459,36 +460,49 @@ const SongManager = () => {
 
 		// Set src, load and play. This starts streaming quickly and allows Range requests.
 		try {
-			// remove any previous canplay listener
+			// remove any previous listeners
 			try { if (audio._sm_canplay) audio.removeEventListener('canplay', audio._sm_canplay); } catch (e) {}
+			try { if (audio._sm_loadmeta) audio.removeEventListener('loadedmetadata', audio._sm_loadmeta); } catch (e) {}
 			if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
 
+			// Set crossOrigin and preload BEFORE src to avoid CORS/loading issues
+			audio.crossOrigin = 'anonymous';
+			audio.preload = 'auto';
+
+			// Listen for either canplay OR loadedmetadata - whichever fires first
+			// Attach BEFORE load()/play() to avoid race condition
+			const handleReady = () => {
+				if (!bufferTimerRef.current) return; // already cleared
+				setIsBuffering(false);
+				try { audio.removeEventListener('canplay', handleReady); } catch (e) {}
+				try { audio.removeEventListener('loadedmetadata', handleReady); } catch (e) {}
+				try { audio.removeEventListener('durationchange', handleReady); } catch (e) {}
+				if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
+			};
+			audio.addEventListener('canplay', handleReady);
+			audio.addEventListener('loadedmetadata', handleReady);
+			audio.addEventListener('durationchange', handleReady);
+
+			// Now set src and start loading/playing
+			// Note: do NOT call audio.load() - setting src already starts loading,
+			// and an explicit load() call interrupts play() requests
 			if (audio.src !== audioSrc) {
 				audio.src = audioSrc;
 			}
-			audio.preload = 'auto';
-			audio.crossOrigin = 'anonymous';
-			audio.load();
-			audio.play().then(() => {
-				setIsPlaying(true);
-			}).catch(() => { /* ignore play errors */ });
+			audio.play().catch((e) => {
+				console.warn('Audio play() rejected:', e?.message || e);
+			});
 
-			// attach one-time canplay listener to start playback ASAP
-			const onCanPlay = () => {
-				setIsBuffering(false);
-				audio.play().then(() => setIsPlaying(true)).catch(() => {});
-				try { audio.removeEventListener('canplay', onCanPlay); } catch (e) {}
-				audio._sm_canplay = null;
-				if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
-			};
-			audio._sm_canplay = onCanPlay;
-			audio.addEventListener('canplay', onCanPlay);
-
-			// safety timeout: if canplay doesn't fire within 10s, stop buffering
+			// safety timeout: if metadata doesn't load within 10s, network/backend issue
+			// Just set state; don't call pause() as it interrupts play() requests
 			bufferTimerRef.current = setTimeout(() => {
+				if (!bufferTimerRef.current) return; // already cleared
+				bufferTimerRef.current = null;
 				setIsBuffering(false);
 				setIsPlaying(false);
-				try { if (audio._sm_canplay) { audio.removeEventListener('canplay', audio._sm_canplay); audio._sm_canplay = null; } } catch (e) {}
+				try { audio.removeEventListener('canplay', handleReady); } catch (e) {}
+				try { audio.removeEventListener('loadedmetadata', handleReady); } catch (e) {}
+				try { audio.removeEventListener('durationchange', handleReady); } catch (e) {}
 				console.warn('Buffer timeout: could not start playback quickly. Check network/backend.');
 			}, 10000);
 		} catch (e) {
@@ -504,7 +518,9 @@ const SongManager = () => {
 				audio.removeEventListener('loadedmetadata', onLoadedMeta);
 				audio.removeEventListener('play', onPlay);
 				audio.removeEventListener('pause', onPause);
+				audio.removeEventListener('error', onError);
 			} catch (e) {}
+			if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
 		};
 	}, [audioSrc]);
 
@@ -957,7 +973,7 @@ const SongManager = () => {
 
 			{/* Hidden Audio Element */}
 			<div className="hidden-audio">
-				<audio ref={audioRef} controls />
+				<audio ref={audioRef} preload="metadata" crossOrigin="anonymous" controls />
 			</div>
 
 			{/* Favorites Footer */}

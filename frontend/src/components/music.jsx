@@ -477,7 +477,7 @@ const App = ({ token, user }) => {
 
   return (
     <div className={`app ${darkMode ? 'dark' : ''}`}>
-      <audio ref={audioRef} src={currentSong?.url} volume={volume} />
+      <audio ref={audioRef} src={currentSong?.url} preload="none" />
       
       {/* Hidden file input for uploads */}
       <input
