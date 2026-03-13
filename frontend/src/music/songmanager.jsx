@@ -8,6 +8,11 @@ const FAV_BASE = `${API_BASE_URL}/api/favorites`;
 const SongManager = () => {
 	const audioRef = useRef(null);
 
+	// Refs for tracking playback refresh behavior
+	const userInteractedRef = useRef(false);  // Track if user clicked play button
+	const manualPlayAttemptRef = useRef(0);   // Track when user manually attempts playback
+	const initialLoadRef = useRef(true);      // Track if we're in initial load phase
+
 	// Modal state
 	const [showUploadModal, setShowUploadModal] = useState(false);
 
@@ -64,12 +69,89 @@ const SongManager = () => {
 		// Load cached content quickly, then refresh in background
 		const cachedSongs = sessionStorage.getItem('sm_songs_v1');
 		const cachedFavs = sessionStorage.getItem('sm_favs_v1');
+		const cachedSongId = sessionStorage.getItem('sm_selectedSongId');
+		const cachedPlayTime = sessionStorage.getItem('sm_playTime');
 		try {
 			if (cachedSongs) setSongs(JSON.parse(cachedSongs));
 			if (cachedFavs) setFavorites(JSON.parse(cachedFavs));
+			// Restore playback state: song ID but NOT playing state (respect browser autoplay policy)
+			if (cachedSongId) {
+				setSelectedSongId(cachedSongId);
+				setAudioSrc(`${API_SONGS}/${cachedSongId}/stream`);
+				if (cachedPlayTime) {
+					setPlayTime(parseFloat(cachedPlayTime));
+				}
+			}
 		} catch (e) { /* ignore parse errors */ }
+		// Mark that we're past initial load
+		initialLoadRef.current = false;
 		// Run background refresh
 		refreshSongsAndFavorites();
+	}, []);
+
+	// Persist playback state every 2 seconds for resume on refresh
+	useEffect(() => {
+		if (!selectedSongId || !audioRef.current) return;
+		const interval = setInterval(() => {
+			try {
+				sessionStorage.setItem('sm_selectedSongId', selectedSongId);
+				sessionStorage.setItem('sm_playTime', audioRef.current.currentTime.toString());
+			} catch (e) {}
+		}, 2000);
+		return () => clearInterval(interval);
+	}, [selectedSongId]);
+
+	// Audio initialization: restore position without autoplay on canplay event
+	useEffect(() => {
+		const audio = audioRef.current;
+		if (!audio) return;
+		
+		const handleCanPlay = () => {
+			const cachedPlayTime = sessionStorage.getItem('sm_playTime');
+			if (cachedPlayTime && initialLoadRef.current === false) {
+				const pos = parseFloat(cachedPlayTime);
+				if (pos > 0 && pos < (audio.duration || Infinity)) {
+					audio.currentTime = pos;
+					setPlayTime(pos);
+				}
+			}
+		};
+		
+		audio.addEventListener('canplay', handleCanPlay);
+		return () => audio.removeEventListener('canplay', handleCanPlay);
+	}, []);
+
+	// Handle play event: sync state with actual audio element
+	const onAudioPlay = () => {
+		setIsPlaying(true);
+	};
+
+	// Handle pause event: sync state with actual audio element
+	const onAudioPause = () => {
+		setIsPlaying(false);
+	};
+
+	// Playback sync effect: sync isPlaying state with audio element (respects manual play grace period)
+	useEffect(() => {
+		const audio = audioRef.current;
+		if (!audio || initialLoadRef.current === true) return; // Skip during initial load
+		
+		// Skip if user just made a manual play attempt (< 500ms ago)
+		const timeSinceManualAttempt = Date.now() - manualPlayAttemptRef.current;
+		if (timeSinceManualAttempt < 500) return;
+		
+		// Sync isPlaying state with actual audio state
+		const handlePlayStateChange = () => {
+			setIsPlaying(!audio.paused);
+		};
+		
+		audio.addEventListener('play', handlePlayStateChange);
+		audio.addEventListener('pause', handlePlayStateChange);
+		
+		return () => {
+			audio.removeEventListener('play', handlePlayStateChange);
+			audio.removeEventListener('pause', handlePlayStateChange);
+		};
 	}, []);
 
 	// Fetch songs & favorites in parallel with abort and cache results
@@ -335,6 +417,9 @@ const SongManager = () => {
 	};
 
 	const handlePlaySong = async (id) => {
+		// Mark manual play attempt to prevent sync effect interference
+		manualPlayAttemptRef.current = Date.now();
+		
 		if (selectedSongId === id) {
 			setSelectedSongId(null);
 			if (audioSrc && String(audioSrc).startsWith('blob:')) {
@@ -550,6 +635,9 @@ const SongManager = () => {
 	
 	// Toggle play/pause for SongManager
 	const togglePlayPause = () => {
+		// Mark manual play attempt to prevent sync effect interference
+		manualPlayAttemptRef.current = Date.now();
+		
 		const audio = audioRef.current;
 		if (!audio) return;
 		if (audio.paused) {
@@ -612,51 +700,75 @@ const SongManager = () => {
 						const bufferedPct = dur > 0 ? Math.min(100, (bufferedEnd / dur) * 100) : 0;
 
 						return (
-							<tr key={_id}>
-								<td>{title}</td>
-								<td>{artist}</td>
-								<td>{album}</td>
-								<td>{duration}</td>
-								<td>{folder}</td>
-								<td>
-									<div className="action-buttons">
-										<button
-											onClick={() => handlePlaySong(_id)}
-											className={`play-button ${selectedSongId === _id ? 'playing' : 'not-playing'}`}
-										>
-											{selectedSongId === _id ? 'Playing' : 'Play'}
-										</button>
+							<React.Fragment key={_id}>
+								<tr className={selectedSongId === _id ? 'active' : ''}>
+									<td>{title}</td>
+									<td>{artist}</td>
+									<td>{album}</td>
+									<td>{duration}</td>
+									<td>{folder}</td>
+									<td>
+										<div className="action-buttons">
+											<button
+												onClick={() => handlePlaySong(_id)}
+												className={`play-button ${selectedSongId === _id ? 'playing' : 'not-playing'}`}
+											>
+												{selectedSongId === _id ? 'Playing' : 'Play'}
+											</button>
 
-										<button
-											onClick={() => toggleFavorite(_id)}
-											aria-label={isFavorited(_id) ? 'Remove from favorites' : 'Add to favorites'}
-											className={`favorite-button ${isFavorited(_id) ? 'favorited' : 'not-favorited'}`}
-										>
-											{isFavorited(_id) ? '❤️' : '🤍'}
-										</button>
+											<button
+												onClick={() => toggleFavorite(_id)}
+												aria-label={isFavorited(_id) ? 'Remove from favorites' : 'Add to favorites'}
+												className={`favorite-button ${isFavorited(_id) ? 'favorited' : 'not-favorited'}`}
+											>
+												{isFavorited(_id) ? '❤️' : '🤍'}
+											</button>
 
-										<button
-											onClick={() => handleDelete(_id)}
-											disabled={deletingId === _id}
-											className="delete-button"
-										>
-											{deletingId === _id ? 'Deleting...' : 'Delete'}
-										</button>
-									</div>
-
-									{selectedSongId === _id && (
-										<div className="progress-container">
-											<div className="progress-bar">
-												<div className="progress-buffered" style={{ width: `${bufferedPct}%` }} />
-												<div className="progress-played" style={{ width: `${playedPct}%` }} />
-											</div>
-											<div className="progress-text">
-												Loaded: {Math.round(bufferedPct)}% — {Math.round(playTime)}s / {Math.round(dur)}s
-											</div>
+											<button
+												onClick={() => handleDelete(_id)}
+												disabled={deletingId === _id}
+												className="delete-button"
+											>
+												{deletingId === _id ? 'Deleting...' : 'Delete'}
+											</button>
 										</div>
-									)}
-								</td>
-							</tr>
+									</td>
+								</tr>
+								
+								{selectedSongId === _id && (
+									<tr className="player-controls-row">
+										<td colSpan="6">
+											<div className="song-player-controls">
+												<div className="progress-container">
+													<div className="progress-bar">
+														<div className="progress-buffered" style={{ width: `${bufferedPct}%` }} />
+														<div className="progress-played" style={{ width: `${playedPct}%` }} />
+													</div>
+													<div className="progress-text">
+														Loaded: {Math.round(bufferedPct)}% — {Math.round(playTime)}s / {Math.round(dur)}s
+													</div>
+												</div>
+												
+												<div className="playback-controls">
+													<button onClick={() => seekBy(-10)} className="seek-button">« 10s</button>
+													<button onClick={togglePlayPause} className="playpause-button">{isPlaying ? 'Pause' : 'Play'}</button>
+													{selectedSongId && isPlaying && audioRef.current?.paused && initialLoadRef.current === false && (
+														<button 
+															onClick={togglePlayPause} 
+															className="resume-button"
+														>
+															▶️ Resume Playback
+														</button>
+													)}
+													<button onClick={() => seekBy(10)} className="seek-button">10s »</button>
+													{isBuffering && <div className="buffering-indicator">Buffering…</div>}
+													<span className="time-display">{Math.round(playTime)}s / {Math.round(dur)}s</span>
+												</div>
+											</div>
+										</td>
+									</tr>
+								)}
+							</React.Fragment>
 						);
 					})}
 				</tbody>
@@ -960,20 +1072,16 @@ const SongManager = () => {
 				{songsContent}
 			</div>
 
-			{/* Inline player controls for current selection */}
-			{selectedSongId && (
-				<div className="inline-player" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
-					<button onClick={() => seekBy(-10)} className="seek-button">« 10s</button>
-					<button onClick={togglePlayPause} className="playpause-button">{isPlaying ? 'Pause' : 'Play'}</button>
-					<button onClick={() => seekBy(10)} className="seek-button">10s »</button>
-					{isBuffering && <div style={{ marginLeft: 8, color: '#444', fontSize: 13 }}>Buffering…</div>}
-					<span style={{ marginLeft: 12, color: '#444', fontSize: 13 }}>{Math.round(playTime)}s / {streamDuration ? Math.round(streamDuration) + 's' : '--:--'}</span>
-				</div>
-			)}
-
 			{/* Hidden Audio Element */}
 			<div className="hidden-audio">
-				<audio ref={audioRef} preload="metadata" crossOrigin="anonymous" controls />
+				<audio 
+					ref={audioRef} 
+					preload="metadata" 
+					crossOrigin="anonymous" 
+					controls 
+					onPlay={onAudioPlay}
+					onPause={onAudioPause}
+				/>
 			</div>
 
 			{/* Favorites Footer */}

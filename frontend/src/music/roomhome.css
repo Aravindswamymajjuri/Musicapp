@@ -1,0 +1,474 @@
+/* Room Home Container */
+.room-home-container {
+  min-height: calc(100vh - 140px);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Main Welcome Section */
+.room-welcome-section {
+  max-width: 900px;
+  width: 100%;
+  background: white;
+  border-radius: 1.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+/* Welcome Header */
+.room-welcome-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.room-welcome-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 0.3rem 0;
+  letter-spacing: -0.5px;
+}
+
+.room-welcome-subtitle {
+  font-size: 1rem;
+  color: #64748b;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Tab Navigation */
+.room-tab-nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.room-tab-button {
+  flex: 1;
+  padding: 0.7rem;
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-bottom: 3px solid transparent;
+  position: relative;
+  margin-bottom: -0.5rem;
+  padding-bottom: 0.7rem;
+}
+
+.room-tab-button:hover {
+  color: #6366f1;
+}
+
+.room-tab-button.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+/* Form Container */
+.room-form-container {
+  display: none;
+  animation: slideUp 0.3s ease-out;
+}
+
+.room-form-container.active {
+  display: block;
+}
+
+/* Form Layout */
+.room-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Form Group */
+.room-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.room-form-label {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.room-form-required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* Form Inputs */
+.room-form-input {
+  padding: 0.7rem 0.875rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: white;
+}
+
+.room-form-input:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.05);
+}
+
+.room-form-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+/* Checkbox Group */
+.room-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0.5rem;
+  border: 2px solid rgba(99, 102, 241, 0.1);
+  transition: all 0.3s;
+}
+
+.room-checkbox-group:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.room-checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #6366f1;
+}
+
+.room-checkbox-group label {
+  flex: 1;
+  cursor: pointer;
+  font-weight: 500;
+  color: #0f172a;
+  margin: 0;
+}
+
+/* Theme Select */
+.room-theme-select {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.room-theme-option {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+}
+
+.room-theme-option:hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.room-theme-option.selected {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border-color: #6366f1;
+}
+
+/* Submit Button */
+.room-submit-button {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.room-submit-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+}
+
+.room-submit-button:active {
+  transform: scale(0.98);
+}
+
+.room-submit-button:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Error Message */
+.room-error-message {
+  padding: 0.75rem;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.05) 100%);
+  border: 2px solid #fecaca;
+  border-radius: 0.75rem;
+  color: #991b1b;
+  font-weight: 500;
+  margin-top: 0.75rem;
+  animation: slideUp 0.3s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.room-error-message::before {
+  content: '⚠️';
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+/* Success Message */
+.room-success-message {
+  padding: 0.75rem;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(20, 184, 60, 0.05) 100%);
+  border: 2px solid #bbf7d0;
+  border-radius: 0.75rem;
+  color: #15803d;
+  font-weight: 500;
+  margin-top: 0.75rem;
+  animation: slideUp 0.3s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.room-success-message::before {
+  content: '✓';
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+/* Help Text */
+.room-help-text {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.1rem;
+}
+
+/* Two Column Layout for Wide Screens */
+@media (min-width: 1200px) {
+  .room-welcome-section {
+    max-width: 1000px;
+  }
+
+  .room-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tablet */
+@media (max-width: 768px) {
+  .room-home-container {
+    padding: 0.75rem;
+    min-height: calc(100vh - 100px);
+  }
+
+  .room-welcome-section {
+    padding: 1.25rem 1rem;
+    border-radius: 1.25rem;
+  }
+
+  .room-welcome-title {
+    font-size: 1.8rem;
+  }
+
+  .room-welcome-subtitle {
+    font-size: 0.85rem;
+  }
+
+  .room-tab-nav {
+    gap: 0.4rem;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .room-tab-button {
+    padding: 0.6rem 0.4rem;
+    font-size: 0.85rem;
+    margin-bottom: -0.6rem;
+    padding-bottom: 0.6rem;
+  }
+
+  .room-form-group {
+    gap: 0.3rem;
+  }
+
+  .room-form-input {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .room-theme-select {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+  }
+
+  .room-theme-option {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .room-submit-button {
+    padding: 0.7rem 1.25rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .room-home-container {
+    padding: 0.5rem;
+    min-height: calc(100vh - 80px);
+  }
+
+  .room-welcome-section {
+    padding: 1rem 0.6rem;
+    border-radius: 1rem;
+  }
+
+  .room-welcome-title {
+    font-size: 1.4rem;
+  }
+
+  .room-welcome-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .room-welcome-header {
+    margin-bottom: 1rem;
+  }
+
+  .room-tab-nav {
+    gap: 0.15rem;
+    padding-bottom: 0.3rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .room-tab-button {
+    padding: 0.4rem 0.2rem;
+    font-size: 0.75rem;
+    margin-bottom: -0.4rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .room-form {
+    gap: 0.7rem;
+  }
+
+  .room-form-group {
+    gap: 0.35rem;
+  }
+
+  .room-form-label {
+    font-size: 0.9rem;
+  }
+
+  .room-form-input {
+    padding: 0.7rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .room-checkbox-group {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .room-checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+
+  .room-checkbox-group label {
+    font-size: 0.9rem;
+  }
+
+  .room-theme-select {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+  }
+
+  .room-theme-option {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .room-submit-button {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .room-error-message,
+  .room-success-message {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+  }
+
+  .room-error-message::before,
+  .room-success-message::before {
+    font-size: 1rem;
+  }
+}
+
+/* Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

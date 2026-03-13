@@ -50,6 +50,8 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
   const socketRef = useRef(null);
   const initialLoad = useRef(true);
   const lastGuestSyncRef = useRef(0); // Track last sync time for guests
+  const userInteractedRef = useRef(false); // Track if user has clicked play button
+  const manualPlayAttemptRef = useRef(0); // Track when user manually attempts playback to prevent sync conflicts
 
   // On mount: load cached room/songs immediately, then refresh in background
   useEffect(() => {
@@ -57,18 +59,42 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     try {
       const cachedRoom = sessionStorage.getItem(`room_${roomCode}`);
       const cachedSongs = sessionStorage.getItem('rs_songs_v1');
+      const cachedQueue = sessionStorage.getItem(`room_${roomCode}_queue`);
       const savedPosition = sessionStorage.getItem(`room_${roomCode}_position`);
       if (cachedRoom) {
         const parsed = JSON.parse(cachedRoom);
         setRoom(parsed);
         setUsers(parsed.users || []);
         setIsHost(!!(parsed.host && parsed.host._id === userId));
-        setCurrentSong(parsed.currentSong || null);
+        // Ensure currentSong has required fields, even if cached data is incomplete
+        const currentSongData = parsed.currentSong;
+        if (currentSongData && currentSongData._id) {
+          // Make sure title and artist exist
+          setCurrentSong({
+            _id: currentSongData._id,
+            title: currentSongData.title || '(no title)',
+            artist: currentSongData.artist || '(no artist)',
+            ...currentSongData // Include any other fields
+          });
+        } else {
+          setCurrentSong(null);
+        }
         // Restore saved position if available (more recent than cached room)
         const savedTime = savedPosition ? parseFloat(savedPosition) : null;
         setCurrentTime(savedTime !== null ? savedTime : (parsed.currentTime || 0));
+        // Restore actual playing state - will try to autoplay only if user is the host
+        // Guests need to click "Enable Playback" button due to browser autoplay policies
         setIsPlaying(parsed.isPlaying || false);
-        setQueue(parsed.queue || []);
+        // Restore queue from cache
+        if (cachedQueue) {
+          try {
+            setQueue(JSON.parse(cachedQueue));
+          } catch (e) {
+            setQueue(parsed.queue || []);
+          }
+        } else {
+          setQueue(parsed.queue || []);
+        }
         setLoadingRoom(false);
         initialLoad.current = false;
       }
@@ -89,6 +115,105 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     }, 2000);
     return () => clearInterval(interval);
   }, [currentSong, roomCode]);
+
+  // Initialize audio player when currentSong loads from cache (on mount)
+  // This ensures audio resumes after page refresh
+  useEffect(() => {
+    if (!currentSong || !currentSong._id) return;
+    if (!audioRef.current) return;
+    
+    // Only run once on initial mount (when loadingRoom transitions to false)
+    if (loadingRoom) return;
+    
+    const audio = audioRef.current;
+    const streamUrl = `${API_SONGS}/${currentSong._id}/stream`;
+    
+    // Check if audio already has this src loaded
+    if (audio.src && String(audio.src).includes(currentSong._id)) {
+      return; // Already loaded
+    }
+
+    // Apply audio src to initialize playback
+    try {
+      audio.crossOrigin = 'anonymous';
+      audio.preload = 'metadata';
+      audio.src = streamUrl;
+      audio.load();
+      
+      // Restore saved position from cache
+      const onCanPlay = () => {
+        try {
+          const savedPosition = sessionStorage.getItem(`room_${roomCode}_position`);
+          if (savedPosition) {
+            const pos = parseFloat(savedPosition);
+            if (pos > 0 && audio.duration && pos < audio.duration) {
+              audio.currentTime = pos;
+              setCurrentTime(pos);
+            }
+          }
+        } catch (e) {
+          console.warn('Error restoring position:', e);
+        }
+      };
+
+      // Restore position once metadata is loaded
+      if (audio.readyState >= 1) {
+        onCanPlay();
+      } else {
+        audio.addEventListener('canplay', onCanPlay, { once: true });
+      }
+
+      return () => {
+        audio.removeEventListener('canplay', onCanPlay);
+      };
+    } catch (e) {
+      console.warn('Error initializing audio on mount:', e);
+    }
+  }, [currentSong, loadingRoom, roomCode]);
+
+  // Handle play/pause state changes (sync React state with audio element)
+  // Guests need explicit click; hosts get a UI prompt to resume after refresh
+  useEffect(() => {
+    if (!audioRef.current || !currentSong?._id) return;
+    
+    const audio = audioRef.current;
+    
+    // Don't try to sync while still loading initial room
+    if (loadingRoom) return;
+    
+    // Skip autoplay on initial page load for everyone (browser policy)
+    // Instead show UI prompts for hosts and guests
+    if (initialLoad.current) return;
+    
+    // Skip sync if we just attempted manual playback (prevent race condition with pause)
+    const timeSinceManualAttempt = Date.now() - manualPlayAttemptRef.current;
+    if (timeSinceManualAttempt < 500) {
+      return; // Give manual play() time to complete
+    }
+    
+    // For guests: require explicit user interaction (click enable button)
+    if (!isHost && !playbackEnabled && !userInteractedRef.current) {
+      return;
+    }
+
+    try {
+      if (isPlaying) {
+        // Audio should be playing
+        if (audio.paused) {
+          audio.play().catch((err) => {
+            console.warn('Failed to resume playback:', err);
+          });
+        }
+      } else {
+        // Audio should be paused
+        if (!audio.paused) {
+          audio.pause();
+        }
+      }
+    } catch (e) {
+      console.warn('Error syncing playback state:', e);
+    }
+  }, [isPlaying, loadingRoom, currentSong?._id, isHost, playbackEnabled]);
 
   // Fetch room info on mount & poll (avoid loading flicker on every poll)
   useEffect(() => {
@@ -143,7 +268,14 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 				if (serverSongId !== localSongId) {
 					if (serverSongId) {
 						const found = allSongs.find(s => s._id === serverSongId);
-						setCurrentSong(found || (server.currentSong ? server.currentSong : { _id: serverSongId }));
+						const songData = found || server.currentSong || { _id: serverSongId };
+						// Ensure title and artist exist
+						setCurrentSong({
+							_id: songData._id,
+							title: songData.title || '(no title)',
+							artist: songData.artist || '(no artist)',
+							...songData
+						});
 					} else {
 						setCurrentSong(null);
 					}
@@ -194,8 +326,18 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 					const serverQueueIds = server.queue.map(q => (typeof q === 'string' ? q : q._id));
 					const localQueueIds = queue.map(q => q._id || q);
 					if (JSON.stringify(serverQueueIds) !== JSON.stringify(localQueueIds)) {
-						const mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id });
+						// If server queue has full objects, use them; otherwise look them up
+						let mapped;
+						if (typeof server.queue[0] === 'object' && server.queue[0]?.title) {
+							// Server sent full objects with metadata
+							mapped = server.queue;
+						} else {
+							// Server only sent IDs, look them up in allSongs
+							mapped = serverQueueIds.map(id => allSongs.find(s => s._id === id) || { _id: id, title: '(unknown)', artist: '' });
+						}
 						setQueue(mapped);
+						// Cache the queue for persistence across refreshes
+						try { sessionStorage.setItem(`room_${roomCode}_queue`, JSON.stringify(mapped)); } catch (e) {}
 					}
 				}
 			};
@@ -321,8 +463,24 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
 
       if (typeof playback.isPlaying === 'boolean') setIsPlaying(playback.isPlaying);
       if (Array.isArray(playback.queue)) {
-        const newQ = playback.queue.map(q => (typeof q === 'string' ? (allSongsRef.current.find(s => s._id === q) || { _id: q }) : q));
+        // If server sent full objects with title/artist, use them directly
+        // Otherwise fallback to looking up in allSongs (which may be incomplete)
+        const newQ = playback.queue.map(q => {
+          if (typeof q === 'string') {
+            // Just an ID - try to find song or create placeholder
+            return allSongsRef.current.find(s => s._id === q) || { _id: q, title: '(unknown)', artist: '' };
+          }
+          if (q._id && (q.title || q.artist)) {
+            // Full object with metadata - use as-is
+            return q;
+          }
+          // Partial object - try to enrich with allSongs lookup
+          const found = allSongsRef.current.find(s => s._id === q._id);
+          return found || { _id: q._id, title: q.title || '(unknown)', artist: q.artist || '' };
+        });
         setQueue(newQ);
+        // Cache queue for persistence
+        try { sessionStorage.setItem(`room_${roomCode}_queue`, JSON.stringify(newQ)); } catch (e) {}
       }
     });
 
@@ -408,7 +566,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
         currentTime: audioRef.current ? audioRef.current.currentTime : 0,
         isPlaying,
-        queue: queue.map(s => (typeof s === 'string' ? s : (s._id || s))),
+        queue: buildQueuePayload(queue),
         serverTime, // Include server time for sync calculations
       };
 
@@ -620,6 +778,10 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         playedStackRef.current.push(currentSong);
       }
       const newQ = [...prev, song];
+      // Cache queue in sessionStorage so it persists across refreshes
+      try {
+        sessionStorage.setItem(`room_${roomCode}_queue`, JSON.stringify(newQ));
+      } catch (e) {}
        if (!currentSong) {
          setCurrentSong(song);
          setIsPlaying(true);
@@ -631,7 +793,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
            currentSong: { _id: song._id, title: song.title, artist: song.artist },
            currentTime: audioRef.current ? audioRef.current.currentTime : 0,
            isPlaying: true,
-           queue: newQ.map(s => s._id || s)
+           queue: newQ.map(s => ({ _id: s._id, title: s.title, artist: s.artist }))
          };
          emitHostPlayback(payload);
          persistPlayback(payload);
@@ -641,7 +803,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
            currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
            currentTime: audioRef.current ? audioRef.current.currentTime : 0,
            isPlaying,
-           queue: newQ.map(s => s._id || s)
+           queue: newQ.map(s => ({ _id: s._id, title: s.title, artist: s.artist }))
          };
          emitHostPlayback(payload);
          persistPlayback(payload);
@@ -655,6 +817,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!isHost) return;
     if (!audioRef.current) return;
+    userInteractedRef.current = true; // Mark user interaction
     const newPlaying = !isPlaying;
     console.debug('togglePlayPause ->', newPlaying);
     if (newPlaying) {
@@ -670,7 +833,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
       currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
       currentTime: audioRef.current ? audioRef.current.currentTime : 0,
       isPlaying: newPlaying,
-      queue: queue.map(s => s._id || s),
+      queue: buildQueuePayload(queue),
     };
     emitHostPlayback(payload);
     persistPlayback(payload);
@@ -698,7 +861,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         currentSong: next ? { _id: next._id, title: next.title, artist: next.artist } : null,
         currentTime: 0,
         isPlaying: true,
-        queue: rest.map(s => s._id || s)
+        queue: buildQueuePayload(rest)
       };
       emitHostPlayback(payload);
       persistPlayback(payload);
@@ -711,6 +874,15 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     if (!audioRef.current) return;
     const t = audioRef.current.currentTime;
     setCurrentTime(t);
+  };
+
+  // Track when audio actually starts/stops playing (independent of React state)
+  const onAudioPlay = () => {
+    setIsPlaying(true);
+  };
+
+  const onAudioPause = () => {
+    setIsPlaying(false);
   };
 
   // Update buffered and duration
@@ -792,6 +964,16 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
     if (entry._id && (entry.title || entry.artist)) return entry;
     if (entry._id) return allSongs.find(s => s._id === entry._id) || entry;
     return entry;
+  };
+
+  // Helper: build queue payload with full objects (includes title/artist)
+  const buildQueuePayload = (q) => {
+    return q.map(s => {
+      if (typeof s === 'string') {
+        return { _id: s, title: '(unknown)', artist: '' };
+      }
+      return { _id: s._id, title: s.title || '(unknown)', artist: s.artist || '' };
+    });
   };
 
   // Host: play now
@@ -924,7 +1106,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
         currentTime: t,
         isPlaying,
-        queue: queue.map(s => s._id || s),
+        queue: buildQueuePayload(queue),
       };
       emitHostPlayback(payload);
       persistPlayback(payload);
@@ -1119,10 +1301,30 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         </button>
       </div>
 
+      {isHost && currentSong && isPlaying && audioRef.current?.paused && !loadingRoom && (
+        <div className="enable-playback-container">
+          <button
+            onClick={() => {
+              userInteractedRef.current = true;
+              initialLoad.current = false; // Mark that user has interacted
+              manualPlayAttemptRef.current = Date.now(); // Mark manual play attempt
+              if (audioRef.current) {
+                audioRef.current.play().catch((err) => {
+                  console.warn('Failed to resume:', err);
+                });
+              }
+            }}
+          >
+            ▶️ Resume Playback
+          </button>
+        </div>
+      )}
+
       {!isHost && currentSong && !playbackEnabled && (
         <div className="enable-playback-container">
           <button
             onClick={() => {
+              userInteractedRef.current = true; // Mark user interaction
               setPlaybackEnabled(true);
               try { audioRef.current?.play().catch(() => {}); } catch (e) {}
             }}
@@ -1154,7 +1356,7 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
                           currentSong: currentSong ? { _id: currentSong._id, title: currentSong.title, artist: currentSong.artist } : null,
                           currentTime: audioRef.current ? audioRef.current.currentTime : 0,
                           isPlaying,
-                          queue: newQ.map(item => (typeof item === 'string' ? item : (item._id || item)))
+                          queue: buildQueuePayload(newQ)
                         };
                         emitHostPlayback(payload);
                         persistPlayback(payload);
@@ -1232,6 +1434,8 @@ const Room = ({ roomCode, onLeaveRoom, userId }) => {
         preload="none"
         crossOrigin="anonymous"
         onTimeUpdate={onTimeUpdate}
+        onPlay={onAudioPlay}
+        onPause={onAudioPause}
         onEnded={handleEnded}
         controls={isHost}
         className={isHost ? '' : 'hidden-audio'}

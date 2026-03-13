@@ -44,7 +44,8 @@ router.get('/:code', authenticateToken, async (req, res) => {
     const room = await Room.findOne({ code })
       .populate('host', 'username email')
       .populate('users', 'username email')
-      .populate('currentSong');
+      .populate('currentSong', 'title artist')
+      .populate('queue', 'title artist'); // Populate queue with full song objects
 
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
@@ -174,6 +175,10 @@ router.put('/:code/playback', authenticateToken, async (req, res) => {
 
     await room.save();
 
+    // Populate queue with full song data before responding
+    await room.populate('queue', 'title artist');
+    await room.populate('currentSong', 'title artist');
+
     // Build response with room data and sync info
     const response = {
       _id: room._id,
@@ -220,7 +225,8 @@ router.put('/:code', authenticateToken, async (req, res) => {
     const updatedRoom = await Room.findById(room._id)
       .populate('host', 'username email')
       .populate('users', 'username email')
-      .populate('currentSong');
+      .populate('currentSong', 'title artist')
+      .populate('queue', 'title artist');
 
     res.json(updatedRoom);
   } catch (error) {

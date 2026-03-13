@@ -1,6 +1,6 @@
-/* Room Management Styles */
+/* Room Management Styles - Modern Design System */
 
-/* Home Component Styles */
+/* Home Component Styles - Handled by roomhome.css */
 .home-container {
   max-width: 400px;
   margin: auto;
@@ -48,32 +48,42 @@
   margin-top: 15px;
 }
 
-/* Room Component Styles */
+/* ========== Main Room Container ========== */
 .room {
-  padding: 20px;
+  padding: 1.5rem;
   max-width: 1200px;
   margin: 0 auto;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  color: #333;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  min-height: calc(100vh - 140px);
+  color: #0f172a;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .room h2 {
   color: white;
-  margin: 0 0 20px 0;
+  margin: 0 0 0.75rem 0;
   font-size: 28px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  padding: 1.25rem;
+  border-radius: 1rem;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
 }
 
+/* ========== Room Info Section ========== */
 .room-info {
-  margin-bottom: 20px;
-  padding: 15px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 15px;
+  gap: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+  animation: slideUp 0.3s ease-out;
 }
 
 .room-info div {
@@ -82,61 +92,90 @@
   min-width: 150px;
 }
 
+.room-info div strong {
+  display: block;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.15rem;
+}
+
+.room-info div span {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .room-info button {
-  padding: 8px 16px;
-  background-color: #ff6b6b;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.3s;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .room-info button:hover {
-  background-color: #ff5252;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
 }
 
+.room-info button:active {
+  transform: scale(0.95);
+}
+
+/* ========== Error Section ========== */
 .error {
-  color: #d32f2f;
-  background-color: #ffebee;
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0;
+  color: #991b1b;
+  background-color: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.05) 100%);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  margin: 1rem 0;
+  border-left: 4px solid #ef4444;
+  animation: slideUp 0.3s ease-out;
 }
 
+/* ========== Loading State ========== */
 .loading {
   text-align: center;
-  padding: 40px;
-  color: white;
-  font-size: 18px;
+  padding: 3rem;
+  color: #64748b;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .hidden-audio {
   display: none;
 }
 
-/* Playback Info - Made prominent */
+/* ========== Playback Info Section ========== */
 .playback-info {
-  margin-bottom: 20px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.98);
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+  backdrop-filter: blur(10px);
+  animation: slideUp 0.3s ease-out;
 }
 
 .playback-info > div:first-child {
-  font-weight: bold;
-  margin-bottom: 12px;
-  font-size: 18px;
-  color: #333;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  color: #0f172a;
 }
 
 .playback-progress-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .playback-progress-wrapper {
@@ -145,11 +184,16 @@
 
 .playback-progress-bar {
   position: relative;
-  height: 12px;
-  background: #ddd;
-  border-radius: 6px;
+  height: 6px;
+  background: rgba(226, 232, 240, 0.6);
+  border-radius: 3px;
   overflow: hidden;
   cursor: pointer;
+  transition: height 0.2s;
+}
+
+.playback-progress-bar:hover {
+  height: 8px;
 }
 
 .playback-progress-buffered {
@@ -157,7 +201,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  background: #999;
+  background: rgba(148, 163, 184, 0.5);
   opacity: 0.8;
   transition: width 0.3s ease;
 }
@@ -167,28 +211,74 @@
   left: 0;
   top: 0;
   bottom: 0;
-  background: linear-gradient(90deg, #667eea, #764ba2);
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
   transition: width 0.1s linear;
 }
 
 .playback-progress-time {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #666;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: #64748b;
+  text-align: center;
 }
 
-/* Songs Section */
+/* ========== Playback Controls Section ========== */
+.playback-controls-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.playback-button {
+  padding: 0.5rem 0.8rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  white-space: nowrap;
+}
+
+.playback-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.playback-button:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ========== Songs Section ========== */
 .songs {
-  margin-bottom: 30px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+  animation: slideUp 0.4s ease-out;
 }
 
 .songs h3 {
-  margin: 0 0 15px 0;
-  color: #333;
-  font-size: 18px;
+  margin: 0 0 0.75rem 0;
+  color: #0f172a;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #6366f1;
 }
 
 .songs ul {
@@ -198,56 +288,80 @@
 }
 
 .songs li {
-  padding: 12px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: background-color 0.2s;
+  gap: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .songs li:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(99, 102, 241, 0.05);
+  transform: translateX(4px);
 }
 
 .songs li:last-child {
   border-bottom: none;
 }
 
+.songs li .song-title {
+  flex: 1;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.songs li .song-artist {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  margin: 0 1rem;
+}
+
 .songs button {
-  margin-left: 8px;
-  padding: 6px 12px;
-  background-color: #667eea;
+  margin-left: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.4rem;
   cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.2);
+  white-space: nowrap;
 }
 
 .songs button:hover {
-  background-color: #764ba2;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
 }
 
 .songs button:disabled {
-  background-color: #ccc;
+  background: #cbd5e1;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
-/* Album Block */
+/* ========== Album Block ========== */
 .album-block {
-  margin-bottom: 20px;
-  padding: 15px;
-  background-color: #f9f9f9;
-  border-radius: 8px;
-  border-left: 4px solid #667eea;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 1rem;
+  border-left: 4px solid #6366f1;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  animation: slideUp 0.4s ease-out;
 }
 
 .album-block h3 {
-  margin: 0 0 12px 0;
-  color: #333;
-  font-size: 16px;
+  margin: 0 0 0.75rem 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .album-table {
@@ -256,20 +370,28 @@
 }
 
 .album-table tr {
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e2e8f0;
+  transition: background-color 0.2s;
 }
 
 .album-table tr:hover {
-  background-color: #f0f0f0;
+  background-color: rgba(99, 102, 241, 0.05);
+}
+
+.album-table tr:last-child {
+  border-bottom: none;
 }
 
 .album-table td {
-  padding: 10px;
+  padding: 0.875rem;
   vertical-align: middle;
+  font-size: 0.95rem;
 }
 
 .album-table td:first-child {
   flex: 1;
+  color: #0f172a;
+  font-weight: 500;
 }
 
 .album-table td:last-child {
@@ -279,35 +401,45 @@
 
 .album-show-more {
   text-align: center;
-  margin-top: 12px;
+  margin-top: 1rem;
 }
 
 .album-show-more button {
-  padding: 8px 16px;
-  background-color: #667eea;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .album-show-more button:hover {
-  background-color: #764ba2;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
 }
 
-/* Queue Section */
+/* ========== Queue Section ========== */
 .queue {
-  margin-bottom: 30px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+  animation: slideUp 0.5s ease-out;
 }
 
 .queue h3 {
-  margin: 0 0 15px 0;
-  color: #333;
-  font-size: 18px;
+  margin: 0 0 1.5rem 0;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #6366f1;
 }
 
 .queue ul {
@@ -317,17 +449,18 @@
 }
 
 .queue li {
-  padding: 12px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fafafa;
-  transition: background-color 0.2s;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.02) 0%, rgba(139, 92, 246, 0.02) 100%);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .queue li:hover {
-  background-color: #f0f0f0;
+  background: rgba(99, 102, 241, 0.08);
+  transform: translateX(4px);
 }
 
 .queue li:last-child {
@@ -335,99 +468,121 @@
 }
 
 .queue button {
-  padding: 6px 12px;
-  background-color: #ff6b6b;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.4rem;
   cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
 }
 
 .queue button:hover {
-  background-color: #ff5252;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
 }
 
-/* Playback Controls */
+/* ========== Playback Controls ========== */
 .controls {
   display: flex;
-  gap: 10px;
+  gap: 1rem;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
   flex-wrap: wrap;
+  animation: slideUp 0.3s ease-out;
 }
 
 .controls button {
-  padding: 10px 20px;
+  padding: 0.75rem 1.5rem;
   border: none;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
-  border-radius: 4px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-weight: bold;
-  transition: transform 0.2s, box-shadow 0.2s;
-  font-size: 14px;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 0.95rem;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  white-space: nowrap;
 }
 
 .controls button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
 }
 
 .controls button:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* Host Controls */
+/* ========== Host Controls ========== */
 .host-controls {
-  margin-top: 20px;
-  padding: 20px;
-  background-color: rgba(255, 193, 7, 0.15);
-  border-radius: 8px;
-  border-left: 4px solid #ffc107;
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.15) 0%, rgba(255, 235, 130, 0.1) 100%);
+  border-radius: 1rem;
+  border-left: 4px solid #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 .host-controls h3 {
-  margin: 0 0 15px 0;
-  color: #e65100;
-  font-size: 16px;
+  margin: 0 0 1rem 0;
+  color: #b45309;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .host-controls button {
-  padding: 10px 16px;
-  background-color: #ffc107;
-  color: #333;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s;
-  margin-right: 10px;
-  margin-bottom: 10px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-right: 0.75rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
 }
 
 .host-controls button:hover {
-  background-color: #ffb300;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
 }
 
-/* User List */
+/* ========== User List ========== */
 .user-list {
-  margin-top: 20px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+  animation: slideUp 0.6s ease-out;
 }
 
 .user-list h3 {
-  margin: 0 0 15px 0;
-  color: #333;
-  font-size: 18px;
+  margin: 0 0 1.5rem 0;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #6366f1;
 }
 
 .user-list ul {
@@ -437,16 +592,19 @@
 }
 
 .user-list li {
-  padding: 12px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #333;
+  color: #0f172a;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .user-list li:hover {
-  background-color: #f9f9f9;
+  background: rgba(99, 102, 241, 0.05);
+  transform: translateX(4px);
 }
 
 .user-list li:last-child {
@@ -454,50 +612,63 @@
 }
 
 .user-list button {
-  padding: 6px 12px;
-  background-color: #ff6b6b;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.4rem;
   cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
 }
 
 .user-list button:hover {
-  background-color: #ff5252;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
 }
 
-/* Enable Playback Button */
+/* ========== Enable Playback Container ========== */
 .enable-playback-container {
-  margin-top: 20px;
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
+  margin-top: 2rem;
+  padding: 2rem;
+  background: white;
+  border-radius: 1rem;
   text-align: center;
-  border: 2px solid #fbc02d;
+  border: 2px solid #fbbf24;
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);
+  animation: slideUp 0.4s ease-out;
+}
+
+.enable-playback-container p {
+  color: #0f172a;
+  font-weight: 500;
+  margin-bottom: 1rem;
 }
 
 .enable-playback-container button {
-  padding: 12px 24px;
-  background-color: #fbc02d;
-  color: #333;
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-weight: bold;
-  font-size: 14px;
-  transition: background-color 0.2s;
+  font-weight: 700;
+  font-size: 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
 }
 
 .enable-playback-container button:hover {
-  background-color: #f9a825;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(251, 191, 36, 0.4);
 }
 
-/* Audio Element */
+/* ========== Audio Element ========== */
 .room audio {
   width: 100%;
-  margin-top: 20px;
+  margin-top: 1.5rem;
 }
 
 .room audio.hidden-audio {
@@ -505,52 +676,79 @@
   opacity: 0.001;
 }
 
-/* Album Display */
-.album-block {
-  margin-top: 18px;
+/* ========== Animations ========== */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.album-block h3 {
-  margin-bottom: 8px;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.album-table {
-  width: 100%;
-  border-collapse: collapse;
+/* ========== Responsive Design ========== */
+@media (max-width: 1024px) {
+  .room {
+    padding: 1.25rem;
+  }
+
+  .room h2 {
+    font-size: 1.9rem;
+  }
+
+  .controls {
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .controls button {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
 }
 
-.album-table tbody tr {
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.album-table tbody tr:hover {
-  background-color: #f9f9f9;
-}
-
-.album-show-more {
-  margin-top: 8px;
-}
-
-/* Loading States */
-.loading {
-  text-align: center;
-  padding: 40px;
-  color: #666;
-}
-
-/* Responsive Design */
 @media (max-width: 768px) {
   .room {
-    padding: 10px;
+    padding: 0.75rem;
+  }
+
+  .room h2 {
+    padding: 1.25rem 0.75rem;
+    font-size: 1.6rem;
+  }
+
+  .room-info {
+    padding: 0.75rem;
+    gap: 0.75rem;
+    flex-direction: column;
+  }
+
+  .room-info div {
+    min-width: unset;
   }
 
   .controls {
     flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.75rem;
   }
 
   .controls button {
     flex: 1;
-    min-width: 80px;
+    min-width: 70px;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
   }
 
   .playback-progress-wrapper {
@@ -562,12 +760,103 @@
   .user-list li {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 0.5rem;
   }
 
   .songs li button,
   .queue li button,
   .user-list li button {
+    width: 100%;
     margin-left: 0 !important;
+  }
+
+  .host-controls button {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 0.4rem;
+  }
+
+  .album-table td {
+    padding: 0.6rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .room {
+    padding: 0.5rem;
+  }
+
+  .room h2 {
+    padding: 1rem 0.5rem;
+    font-size: 1.4rem;
+  }
+
+  .room-info {
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .room-info button {
+    width: 100%;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  .playback-info {
+    padding: 0.75rem;
+  }
+
+  .controls {
+    padding: 0.75rem;
+    gap: 0.25rem;
+  }
+
+  .controls button {
+    padding: 0.45rem 0.6rem;
+    font-size: 0.75rem;
+    min-width: 60px;
+  }
+
+  .songs h3,
+  .queue h3,
+  .user-list h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .songs li,
+  .queue li,
+  .user-list li {
+    padding: 0.6rem;
+    gap: 0.35rem;
+  }
+
+  .songs button,
+  .queue button,
+  .user-list button {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .host-controls {
+    margin-top: 1.25rem;
+    padding: 0.75rem;
+  }
+
+  .host-controls button {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .enable-playback-container {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .enable-playback-container button {
+    padding: 0.6rem 1.25rem;
+    font-size: 0.85rem;
   }
 }

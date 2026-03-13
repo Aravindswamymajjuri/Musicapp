@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import './favioute.css';
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
 const FAV_BASE = `${API_BASE_URL}/api/favorites`;
@@ -472,154 +473,243 @@ const FavoriteSongs = ({ token: propToken, onPlaySong, selectedSongId: propSelec
 
   // Render
   if (!token) return (
-    <div style={{ padding: 16 }}>
-      <p>Please log in to see your favorite songs.</p>
-      <button onClick={() => window.location.assign('/login')} style={{ padding: 8, borderRadius: 6 }}>Go to Login</button>
+    <div className="favorites-container">
+      <div className="favorites-empty">
+        <div className="favorites-empty-icon">🔐</div>
+        <div className="favorites-empty-title">Sign In Required</div>
+        <div className="favorites-empty-text">Please log in to view your favorite songs</div>
+        <button 
+          className="control-btn" 
+          onClick={() => window.location.assign('/login')}
+          style={{ marginTop: '1rem' }}
+        >
+          Go to Login
+        </button>
+      </div>
     </div>
   );
 
-  if (loading) return <p>Loading favorite songs...</p>;
+  if (loading) return (
+    <div className="favorites-container">
+      <div className="favorites-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading your favorite songs...</p>
+      </div>
+    </div>
+  );
 
   if (error) {
     return (
-      <div style={{ marginTop: 20, maxWidth: 1000, marginLeft: 'auto', marginRight: 'auto' }}>
-        <div style={{ background: '#fff', borderRadius: 10, padding: 14, boxShadow: '0 6px 18px rgba(2,6,23,0.06)' }}>
-          <h3 style={{ marginTop: 0 }}>Favorites — Error</h3>
-          <p style={{ color: 'red' }}>{error}</p>
-          {debugInfo && (
-            <pre style={{ background: '#f3f4f6', padding: 10, borderRadius: 6, overflowX: 'auto' }}>
+      <div className="favorites-container">
+        <div className="favorites-error">
+          {error}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <button 
+            className="control-btn" 
+            onClick={() => setReloadToggle(r => !r)}
+          >
+            Retry
+          </button>
+          <button 
+            className="control-btn" 
+            onClick={() => { localStorage.removeItem('token'); window.location.reload(); }}
+          >
+            Logout
+          </button>
+        </div>
+        {debugInfo && (
+          <details style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '0.5rem' }}>
+            <summary style={{ cursor: 'pointer', fontWeight: '600', color: '#6366f1' }}>Debug Info</summary>
+            <pre style={{ marginTop: '0.5rem', fontSize: '0.8rem', overflow: 'auto' }}>
               {JSON.stringify(debugInfo, null, 2)}
             </pre>
-          )}
-          <div style={{ marginTop: 10 }}>
-            <button onClick={() => setReloadToggle(r => !r)} style={{ padding: 8, borderRadius: 6, marginRight: 8 }}>Retry</button>
-            <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} style={{ padding: 8, borderRadius: 6 }}>Logout</button>
-          </div>
-        </div>
+          </details>
+        )}
       </div>
     );
   }
 
   if (!favoriteSongs || favoriteSongs.length === 0) {
     return (
-      <div style={{ marginTop: 20, maxWidth: 1000, marginLeft: 'auto', marginRight: 'auto' }}>
-        <div style={{ background: '#fff', borderRadius: 10, padding: 14, boxShadow: '0 6px 18px rgba(2,6,23,0.06)' }}>
-          <h2 style={{ marginTop: 0 }}>Your Favorite Songs</h2>
-          <p>No favorite songs were found for this account.</p>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={() => setReloadToggle(r => !r)} style={{ padding: 8, borderRadius: 6 }}>Refresh</button>
-            <a href="/songmanager" style={{ marginLeft: 12 }}>Upload songs</a>
-          </div>
-          {debugInfo && (
-            <details style={{ marginTop: 12 }}>
-              <summary>Debug info</summary>
-              <pre style={{ background: '#f3f4f6', padding: 10 }}>{JSON.stringify(debugInfo, null, 2)}</pre>
-            </details>
-          )}
+      <div className="favorites-container">
+        <div className="favorites-header">
+          <h1 className="favorites-title">Your Favorite Songs</h1>
+        </div>
+        <div className="favorites-empty">
+          <div className="favorites-empty-icon">❤️</div>
+          <div className="favorites-empty-title">No Favorites Yet</div>
+          <div className="favorites-empty-text">Start adding songs to your favorites to see them here</div>
+          <button 
+            className="control-btn" 
+            onClick={() => window.location.assign('/songs')}
+            style={{ marginTop: '1rem' }}
+          >
+            Browse Songs
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: 20, maxWidth: 1000, marginLeft: 'auto', marginRight: 'auto' }}>
-      <div style={{ background: '#fff', borderRadius: 10, padding: 14, boxShadow: '0 6px 18px rgba(2,6,23,0.06)' }}>
-        <h2 style={{ marginTop: 0 }}>Your Favorite Songs</h2>
+    <div className="favorites-container">
+      {/* Header */}
+      <div className="favorites-header">
+        <h1 className="favorites-title">Your Favorite Songs</h1>
+        <div className="favorites-status">{favoriteSongs.length} songs</div>
+      </div>
 
-        {/* Playback controls for favorites queue */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <button onClick={playAll} style={{ padding: '6px 10px' }}>Play All</button>
-          <button onClick={handlePrev} style={{ padding: '6px 10px' }}>Prev</button>
-          <button onClick={() => {
-            if (!audioRef.current) return;
-            if (isPlayingLocal) { audioRef.current.pause(); setIsPlayingLocal(false); setIsPlaying(false); }
-            else { audioRef.current.play().catch(() => {}); setIsPlayingLocal(true); setIsPlaying(true); }
-          }} style={{ padding: '6px 10px' }}>{isPlayingLocal ? 'Pause' : 'Play'}</button>
-          <button onClick={handleNext} style={{ padding: '6px 10px' }}>Next</button>
-          {/* Buffering indicator */}
-          {isBuffering && <div style={{ marginLeft: 8, color: '#444', fontSize: 13 }}>Buffering…</div>}
-          <button onClick={toggleLoopMode} title="Toggle loop mode" style={{ padding: '6px 10px' }}>
-            Loop: {loopMode}
+      {/* Playback Controls */}
+      <div className="favorites-controls">
+        <div className="control-buttons">
+          <button className="control-btn" onClick={playAll} title="Play all favorites">
+            ▶ Play All
           </button>
-          <div style={{ marginLeft: 'auto', fontSize: 13, color: '#444' }}>
-            {currentIndex >= 0 && queue[currentIndex]
-              ? `Now: ${queue[currentIndex].title} — ${formatTime(playTime)} / ${trackDuration ? formatTime(trackDuration) : '--:--'}`
-              : 'Not playing'}
-          </div>
+          <button className="control-btn" onClick={handlePrev} title="Previous song">
+            ⏮ Prev
+          </button>
+          <button 
+            className="control-btn" 
+            onClick={() => {
+              if (!audioRef.current) return;
+              if (isPlayingLocal) { 
+                audioRef.current.pause(); 
+                setIsPlayingLocal(false); 
+                setIsPlaying(false); 
+              } else { 
+                audioRef.current.play().catch(() => {}); 
+                setIsPlayingLocal(true); 
+                setIsPlaying(true); 
+              }
+            }}
+            title={isPlayingLocal ? 'Pause' : 'Play'}
+          >
+            {isPlayingLocal ? '⏸ Pause' : '▶ Play'}
+          </button>
+          <button className="control-btn" onClick={handleNext} title="Next song">
+            ⏭ Next
+          </button>
+          <button 
+            className="control-btn" 
+            onClick={toggleLoopMode} 
+            title="Toggle loop mode"
+            style={{ opacity: loopMode !== 'none' ? 1 : 0.7 }}
+          >
+            🔁 Loop: {loopMode}
+          </button>
         </div>
+        <div className="loop-status">
+          {isBuffering ? '↻ Buffering...' : currentIndex >= 0 && queue[currentIndex]
+            ? `Now: ${queue[currentIndex].title}`
+            : 'Not playing'}
+        </div>
+      </div>
 
-        {/* 10s seek controls when a song is selected/playing */}
-        {(selectedSongId || currentIndex >= 0) && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-            <button onClick={() => seekBy(-10)} style={{ padding: '6px 10px' }}>« 10s</button>
-            <button onClick={togglePlayPause} style={{ padding: '6px 10px' }}>{isPlaying ? 'Pause' : 'Play'}</button>
-            <button onClick={() => seekBy(10)} style={{ padding: '6px 10px' }}>10s »</button>
-            <div style={{ marginLeft: 12, color: '#444', fontSize: 13 }}>
-              {currentIndex >= 0 && queue[currentIndex] ? `${queue[currentIndex].title} — ${formatTime(playTime)} / ${trackDuration ? formatTime(trackDuration) : '--:--'}` : selectedSongId ? 'Selected' : ''}
-            </div>
-          </div>
-        )}
+      {/* Hidden Audio Element */}
+      <audio 
+        data-fav-audio="1" 
+        ref={audioRef} 
+        style={{ display: 'none' }} 
+        crossOrigin="anonymous" 
+        preload="metadata" 
+      />
 
-        {/* Hidden audio element used by local playback */}
-        <audio data-fav-audio="1" ref={audioRef} style={{ display: 'none' }} crossOrigin="anonymous" preload="metadata" />
+      {/* Table/List */}
+      <div className="favorites-table-wrapper">
+        <div className="favorites-table-header">
+          <div style={{ textAlign: 'center' }}>#</div>
+          <div>Title & Artist</div>
+          <div style={{ textAlign: 'right' }}>Duration</div>
+          <div style={{ textAlign: 'right' }}>Actions</div>
+        </div>
+        <div className="favorites-table-body">
+          {favoriteSongs.map((fav, idx) => {
+            const song = fav.song || fav;
+            if (!song) return null;
+            const isCurrentlyPlaying = currentIndex === idx && isPlayingLocal;
+            
+            return (
+              <React.Fragment key={fav._id || song._id}>
+                <div className={`favorite-song-row ${isCurrentlyPlaying ? 'active' : ''} ${currentIndex === idx ? 'has-player' : ''}`}>
+                  <div className="song-index">{idx + 1}</div>
+                  <div className="song-info">
+                    <div className="song-title">{song.title}</div>
+                    <div className="song-artist">{song.artist}</div>
+                  </div>
+                  <div className="song-duration">{song.duration}s</div>
+                  <div className="song-actions">
+                    <button 
+                      className="action-btn play" 
+                      onClick={() => handlePlay(song._id)}
+                      title="Play this song"
+                    >
+                      {isCurrentlyPlaying ? '⏸' : '▶'}
+                    </button>
+                    <button
+                      className="action-btn favorite"
+                      onClick={() => handleToggleFavorite(song._id)}
+                      title="Remove from favorites"
+                    >
+                      ❤️
+                    </button>
+                  </div>
+                </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Title</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Artist</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Album</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Duration (s)</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '8px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {favoriteSongs.map(fav => {
-                const song = fav.song;
-                if (!song) return null; // Defensive check
-                return (
-                  <tr key={fav._id}>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{song.title}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{song.artist}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{song.album}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{song.duration}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
-                      <button
-                        onClick={() => handlePlay(song._id)}
-                        style={{
-                          marginRight: 8,
-                          padding: '6px 12px',
-                          backgroundColor: selectedSongId === song._id ? '#007bff' : '#28a745',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 4,
-                          cursor: 'pointer',
+                {/* Player Controls Row for Current Song */}
+                {isCurrentlyPlaying && (
+                  <div className="playback-info-row">
+                    <div className="playback-progress-wrapper">
+                      <div 
+                        className="playback-progress-bar"
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const percent = (e.clientX - rect.left) / rect.width;
+                          if (audioRef.current && trackDuration) {
+                            audioRef.current.currentTime = percent * trackDuration;
+                          }
                         }}
                       >
-                        {selectedSongId === song._id && isPlayingLocal ? 'Playing' : 'Play'}
-                      </button>
-
-                      <button
-                        onClick={() => handleToggleFavorite(song._id)}
-                        aria-label="Remove from favorites"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: 'red',
-                          fontSize: 20,
-                          verticalAlign: 'middle',
-                        }}
+                        <div 
+                          className="playback-progress-buffered"
+                          style={{ width: `${(playTime / trackDuration) * 100}%` }}
+                        />
+                        <div 
+                          className="playback-progress-played"
+                          style={{ width: `${(playTime / trackDuration) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="playback-controls-row">
+                      <button 
+                        className="seek-btn"
+                        onClick={() => seekBy(-10)}
+                        title="Seek backward 10 seconds"
                       >
-                        ❤️
+                        « 10s
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <button 
+                        className="play-pause-btn"
+                        onClick={togglePlayPause}
+                      >
+                        {isPlaying ? '⏸ Pause' : '▶ Play'}
+                      </button>
+                      <button 
+                        className="seek-btn"
+                        onClick={() => seekBy(10)}
+                        title="Seek forward 10 seconds"
+                      >
+                        10s »
+                      </button>
+                      <span className="timing-display">
+                        {formatTime(playTime)} / {formatTime(trackDuration)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
     </div>
