@@ -37,7 +37,6 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors(corsOptions));
-app.options('/*', cors(corsOptions));
 app.use(express.json());
 
 // MongoDB connection and GridFS setup
