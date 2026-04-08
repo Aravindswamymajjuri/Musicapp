@@ -1,0 +1,97 @@
+/**
+ * OfflineMusicPlayer Stylesheet
+ * Tailwind CSS is used for main styling
+ * This file contains any additional custom styles
+ */
+
+/* Smooth transitions for player controls */
+.player-button {
+  transition: all 0.2s ease-in-out;
+}
+
+.player-button:hover {
+  transform: scale(1.05);
+}
+
+.player-button:active {
+  transform: scale(0.95);
+}
+
+/* Pulse animation for loading state */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Smooth progress bar animation */
+.progress-bar {
+  transition: width 0.1s linear;
+}
+
+/* Song item hover effect */
+.song-item {
+  transition: all 0.2s ease-in-out;
+}
+
+.song-item:hover {
+  transform: translateX(4px);
+}
+
+/* Now playing indicator */
+.now-playing {
+  position: relative;
+  overflow: hidden;
+}
+
+.now-playing::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    #a855f7,
+    #a855f7,
+    transparent
+  );
+  animation: slideDown 1s ease-in-out infinite;
+}
+
+@keyframes slideDown {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* Scrollbar styling */
+.song-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.song-list::-webkit-scrollbar-track {
+  background: rgb(31 41 55);
+  border-radius: 3px;
+}
+
+.song-list::-webkit-scrollbar-thumb {
+  background: rgb(107 114 128);
+  border-radius: 3px;
+}
+
+.song-list::-webkit-scrollbar-thumb:hover {
+  background: rgb(156 163 175);
+}
