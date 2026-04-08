@@ -1,21 +1,22 @@
 // require('dotenv').config();
 
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const { Server } = require('socket.io');
-const multer = require('multer');
-const { GridFsStorage } = require('multer-gridfs-storage');
-const Grid = require('gridfs-stream');
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const { Server } = require("socket.io");
+const multer = require("multer");
+const { GridFsStorage } = require("multer-gridfs-storage");
+const Grid = require("gridfs-stream");
 
 const app = express();
 const server = http.createServer(app);
 
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://tiny-tunes.vercel.app',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
+  process.env.FRONTEND_URL || "https://tiny-tunes.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ];
 
 const corsOptions = {
@@ -23,39 +24,32 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  credentials: true,
 };
 
 const io = new Server(server, {
-  cors: { origin: allowedOrigins, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], credentials: true }
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  },
 });
 
-// CORS middleware for Express routes
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
+// Use cors package for Express routes and preflight requests
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
 
 // MongoDB connection and GridFS setup
-const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://aravindswamymajjuri143:xCuKYeBVOQyv0QdL@projects.m06dc.mongodb.net/?retryWrites=true&w=majority&appName=Projects';
+const mongoURI =
+  process.env.MONGODB_URI ||
+  "mongodb+srv://aravindswamymajjuri143:xCuKYeBVOQyv0QdL@projects.m06dc.mongodb.net/?retryWrites=true&w=majority&appName=Projects";
 
 mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
 const conn = mongoose.connection;
@@ -63,86 +57,92 @@ const conn = mongoose.connection;
 let gfs;
 let gridfsBucket;
 
-conn.once('open', () => {
-  gridfsBucket = new mongoose.mongo.GridFSBucket(conn.db, { bucketName: 'songs' });
+conn.once("open", () => {
+  gridfsBucket = new mongoose.mongo.GridFSBucket(conn.db, {
+    bucketName: "songs",
+  });
   gfs = Grid(conn.db, mongoose.mongo);
-  gfs.collection('songs');
-  console.log('MongoDB connected and GridFS initialized');
+  gfs.collection("songs");
+  console.log("MongoDB connected and GridFS initialized");
 });
 
 // Multer-GridFS-Storage for uploads
 const storage = new GridFsStorage({
   url: mongoURI,
   file: (req, file) => ({
-    filename: Date.now() + '-' + file.originalname,
-    bucketName: 'songs'
+    filename: Date.now() + "-" + file.originalname,
+    bucketName: "songs",
   }),
-  options: { useNewUrlParser: true, useUnifiedTopology: true }
+  options: { useNewUrlParser: true, useUnifiedTopology: true },
 });
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('audio/')) cb(null, true);
-    else cb(new Error('Only audio files are allowed!'), false);
-  }
+    if (file.mimetype.startsWith("audio/")) cb(null, true);
+    else cb(new Error("Only audio files are allowed!"), false);
+  },
 });
 
 // Import routers
-const authRoutes = require('./routes/auth');
-const songsRoutes = require('./routes/songs');
-const playlistsRoutes = require('./routes/playlist');
-const roomsRoutes = require('./routes/room');
-const listeningHistoryRoutes = require('./routes/listenhistory'); // fixed filename
-const favoritesRoutes = require('./routes/faviourt'); // fixed filename
+const authRoutes = require("./routes/auth");
+const songsRoutes = require("./routes/songs");
+const playlistsRoutes = require("./routes/playlist");
+const roomsRoutes = require("./routes/room");
+const listeningHistoryRoutes = require("./routes/listenhistory"); // fixed filename
+const favoritesRoutes = require("./routes/faviourt"); // fixed filename
 
 // IMPORTANT: add a multi-upload endpoint BEFORE mounting the songs router
 // so callers can choose batch upload without changing existing single-file logic.
-app.post('/api/songs/multi-upload', upload.array('files', 50), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded' });
+app.post(
+  "/api/songs/multi-upload",
+  upload.array("files", 50),
+  async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+      // Build response with GridFS file info
+      const filesInfo = (req.files || []).map((f) => ({
+        id: f.id || f._id || null,
+        filename: f.filename,
+        originalname: f.originalname,
+        size: f.size,
+        contentType: f.contentType || f.mimetype || null,
+      }));
+      return res.json({ uploaded: filesInfo });
+    } catch (e) {
+      console.error("multi-upload error", e);
+      return res.status(500).json({ error: "Multi upload failed" });
     }
-    // Build response with GridFS file info
-    const filesInfo = (req.files || []).map(f => ({
-      id: f.id || f._id || null,
-      filename: f.filename,
-      originalname: f.originalname,
-      size: f.size,
-      contentType: f.contentType || f.mimetype || null
-    }));
-    return res.json({ uploaded: filesInfo });
-  } catch (e) {
-    console.error('multi-upload error', e);
-    return res.status(500).json({ error: 'Multi upload failed' });
-  }
-});
+  },
+);
 
 // Mount routers: Each router handles its own paths
-app.use('/api/auth', authRoutes);
-app.use('/api/songs', songsRoutes);
-app.use('/api/playlists', playlistsRoutes);
-app.use('/api/rooms', roomsRoutes);
-app.use('/api/listening-history', listeningHistoryRoutes);
-app.use('/api/favorites', favoritesRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/songs", songsRoutes);
+app.use("/api/playlists", playlistsRoutes);
+app.use("/api/rooms", roomsRoutes);
+app.use("/api/listening-history", listeningHistoryRoutes);
+app.use("/api/favorites", favoritesRoutes);
 
 // Socket.IO event handling - add your logic here
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
 
   // ensure maps exist to track users and latest room playback
   if (!io.userSockets) io.userSockets = new Map();
   if (!io.roomPlaybacks) io.roomPlaybacks = new Map();
 
   // Client can register their authenticated userId after connecting
-  socket.on('registerUser', (userId) => {
+  socket.on("registerUser", (userId) => {
     if (!userId) return;
     io.userSockets.set(String(userId), socket.id);
     console.log(`Registered user ${userId} -> socket ${socket.id}`);
   });
 
   // join specific room namespace (logical room by roomCode)
-  socket.on('joinRoom', (roomCode) => {
+  socket.on("joinRoom", (roomCode) => {
     if (!roomCode) return;
     socket.join(roomCode);
     console.log(`Socket ${socket.id} joined room ${roomCode}`);
@@ -151,12 +151,12 @@ io.on('connection', (socket) => {
     const playback = io.roomPlaybacks.get(roomCode);
     if (playback) {
       // send only to the newly joined socket so it initializes to host state
-      socket.emit('playback', playback);
+      socket.emit("playback", playback);
       console.log(`Sent cached playback to ${socket.id} for room ${roomCode}`);
     }
   });
 
-  socket.on('leaveRoom', (roomCode) => {
+  socket.on("leaveRoom", (roomCode) => {
     if (!roomCode) return;
     socket.leave(roomCode);
     console.log(`Socket ${socket.id} left room ${roomCode}`);
@@ -164,39 +164,45 @@ io.on('connection', (socket) => {
 
   // Host will emit 'hostPlayback' with { roomCode, playback }
   // Server simply broadcasts 'playback' to everyone in that room (except sender)
-  socket.on('hostPlayback', (data) => {
+  socket.on("hostPlayback", (data) => {
     try {
       const { roomCode, playback } = data || {};
       if (!roomCode || !playback) return;
       // persist the latest playback for new joiners (in-memory)
-      try { io.roomPlaybacks.set(roomCode, playback); } catch (e) { /* ignore */ }
-      socket.to(roomCode).emit('playback', playback);
+      try {
+        io.roomPlaybacks.set(roomCode, playback);
+      } catch (e) {
+        /* ignore */
+      }
+      socket.to(roomCode).emit("playback", playback);
     } catch (e) {
-      console.error('Error handling hostPlayback:', e);
+      console.error("Error handling hostPlayback:", e);
     }
   });
 
   // Host requests to kick a user by userId
   // payload: { userId, roomCode }
-  socket.on('kickUser', (payload) => {
+  socket.on("kickUser", (payload) => {
     try {
       const { userId, roomCode } = payload || {};
       if (!userId) return;
       const targetSocketId = io.userSockets.get(String(userId));
       if (!targetSocketId) {
-        console.log('kickUser: target socket not found for user', userId);
+        console.log("kickUser: target socket not found for user", userId);
         return;
       }
       // Notify the specific client to force-leave the room
-      io.to(targetSocketId).emit('forceLeave', { roomCode });
-      console.log(`Kicked user ${userId} (socket ${targetSocketId}) from room ${roomCode}`);
+      io.to(targetSocketId).emit("forceLeave", { roomCode });
+      console.log(
+        `Kicked user ${userId} (socket ${targetSocketId}) from room ${roomCode}`,
+      );
     } catch (e) {
-      console.error('Error handling kickUser:', e);
+      console.error("Error handling kickUser:", e);
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
     // cleanup map entries referencing this socket
     if (io.userSockets) {
       for (const [uid, sid] of io.userSockets.entries()) {
