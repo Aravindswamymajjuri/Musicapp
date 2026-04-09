@@ -1,16 +1,28 @@
-import { registerPlugin } from '@capacitor/core';
-
-/**
- * Register the MediaStore Capacitor plugin
- * This allows us to call native Android code from React
- */
-const MediaStore = registerPlugin('MediaStore');
-
 /**
  * Service to handle fetching songs from device storage
  * Integrates with the native MediaStorePlugin for Android
+ * 
+ * Note: Capacitor only works on native Android/iOS, not in browser
  */
 export class MusicService {
+  static MediaStore = null;
+
+  /**
+   * Initialize Capacitor plugin (only on native platforms)
+   */
+  static async initCapacitor() {
+    if (this.MediaStore) return;
+    
+    try {
+      // Only import Capacitor on native platforms
+      const { registerPlugin } = await import('@capacitor/core');
+      this.MediaStore = registerPlugin('MediaStore');
+    } catch (error) {
+      console.warn('Capacitor not available (running in browser)', error.message);
+      this.MediaStore = null;
+    }
+  }
+
   /**
    * Fetch all audio files from device storage
    * Requires READ_MEDIA_AUDIO permission on Android 13+
@@ -19,7 +31,13 @@ export class MusicService {
    */
   static async fetchSongs() {
     try {
-      const result = await MediaStore.getSongs();
+      await this.initCapacitor();
+      
+      if (!this.MediaStore) {
+        throw new Error('Capacitor not available - this feature only works on Android devices');
+      }
+
+      const result = await this.MediaStore.getSongs();
       
       // Filter out invalid entries and sort by title
       const songs = (result.songs || [])

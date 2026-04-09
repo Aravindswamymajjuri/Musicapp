@@ -101,6 +101,12 @@ const OfflineMusicPlayer = () => {
           <div>
             <h3 className="font-semibold mb-1">Error</h3>
             <p className="text-sm text-gray-200">{player.error}</p>
+            {player.error.includes('browser') && (
+              <p className="text-xs text-gray-300 mt-2 italic">
+                💡 Tip: This feature only works on Android devices or emulators. 
+                Build the APK and install it on your device to use the offline music player.
+              </p>
+            )}
           </div>
         </div>
       )}
