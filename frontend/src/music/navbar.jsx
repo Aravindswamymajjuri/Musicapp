@@ -358,6 +358,7 @@ const Header = () => {
           <Link to="/songmanager" className="header__link">Songs</Link>
           <Link to="/favorite" className="header__link">Favorites</Link>
           <Link to="/room" className="header__link">Rooms</Link>
+          <Link to="/offline-music" className="header__link">🎵 Device Music</Link>
         </nav>
 
         <div className="header__user-section">
@@ -393,6 +394,7 @@ const Header = () => {
             <Link to="/songmanager" className="header__mobile-link" onClick={handleLinkClick}>Songs</Link>
             <Link to="/favorite" className="header__mobile-link" onClick={handleLinkClick}>Favorites</Link>
             <Link to="/room" className="header__mobile-link" onClick={handleLinkClick}>Rooms</Link>
+            <Link to="/offline-music" className="header__mobile-link" onClick={handleLinkClick}>🎵 Device Music</Link>
           </nav>
 
           <div className="header__mobile-user-section">

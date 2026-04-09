@@ -9,6 +9,7 @@ import Signup from './music/signup';
 import SongManager from './music/songmanager';
 import FavoriteSongs from './music/favioute';
 import Roommanagement from './music/roommanagement';
+import OfflineMusicPlayer from './components/OfflineMusicPlayer';
 import Header from './music/navbar';
 
 function App() {
@@ -56,6 +57,12 @@ function App() {
           path="/favorite"
           element={
               <FavoriteSongs />
+          }
+        />
+        <Route
+          path="/offline-music"
+          element={
+              <OfflineMusicPlayer />
           }
         />
         <Route
